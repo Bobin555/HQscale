@@ -1,0 +1,10 @@
+{
+  "modules": [
+    {
+      "file": "scenarios/hq-induction.json",
+      "title": "HQ Site Induction",
+      "description": "Find safety equipment, spot security and H&S issues, and learn what to do when leaving the building.",
+      "minutes": 6
+    }
+  ]
+}

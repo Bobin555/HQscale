@@ -1,0 +1,212 @@
+{
+  "id": "hq-induction",
+  "title": "HQ Site Induction",
+  "description": "A short walk-through of the HQ building: find key safety equipment, spot security and health & safety issues, and learn what to do when you leave.",
+  "estimatedMinutes": 6,
+  "passMark": 0.8,
+
+  "scenes": {
+    "reception": {
+      "title": "Reception — Ground floor",
+      "initialView": { "yaw": 0, "pitch": 0 },
+      "media": {
+        "type": "placeholder",
+        "theme": "reception",
+        "label": "Reception",
+        "objects": [
+          { "kind": "window", "yaw": 150, "pitch": 6, "width": 44 },
+          { "kind": "door", "yaw": 180, "pitch": 0, "glass": true, "width": 18, "text": "MAIN ENTRANCE", "signColor": "#2f5d8a" },
+          { "kind": "exitsign", "yaw": 180, "pitch": 24, "text": "EXIT" },
+          { "kind": "person", "yaw": 4, "pitch": 3, "shirt": "#2f5d8a", "lanyard": "#1e88e5" },
+          { "kind": "desk", "yaw": 0, "pitch": -9, "width": 54, "text": "RECEPTION" },
+          { "kind": "sign", "yaw": -34, "pitch": 12, "width": 20, "text": "VISITORS\nPlease sign in", "color": "#2f5d8a" },
+          { "kind": "plant", "yaw": 36, "pitch": -15 },
+          { "kind": "firstaid", "yaw": 96, "pitch": 7 },
+          { "kind": "extinguisher", "yaw": -64, "pitch": -12 },
+          { "kind": "sign", "yaw": -64, "pitch": 4, "width": 10, "text": "FIRE POINT", "color": "#c62828" },
+          { "kind": "sofa", "yaw": -112, "pitch": -15 },
+          { "kind": "plant", "yaw": -135, "pitch": -15 },
+          { "kind": "elevator", "yaw": 64, "pitch": 0, "text": "G" }
+        ]
+      }
+    },
+
+    "floor10": {
+      "title": "Open-plan office — 10th floor",
+      "initialView": { "yaw": 0, "pitch": -4 },
+      "media": {
+        "type": "placeholder",
+        "theme": "office",
+        "label": "10th floor",
+        "objects": [
+          { "kind": "window", "yaw": 0, "pitch": 6, "width": 60 },
+          { "kind": "person", "yaw": -34, "pitch": 0, "shirt": "#5d4037", "lanyard": "#1e88e5" },
+          { "kind": "workstation", "yaw": -34, "pitch": -12 },
+          { "kind": "workstation", "yaw": 34, "pitch": -12 },
+          { "kind": "whiteboard", "yaw": 92, "pitch": 6, "text": "Q3 ROADMAP\nCONFIDENTIAL\n— do not share —" },
+          { "kind": "workstation", "yaw": 108, "pitch": -12, "unlocked": true },
+          { "kind": "person", "yaw": 118, "pitch": 1, "shirt": "#8e8e8e", "lanyard": "#e53935", "hair": "#b0763b", "skin": "#e0ac85" },
+          { "kind": "elevator", "yaw": 180, "pitch": 0, "text": "10" },
+          { "kind": "sign", "yaw": 152, "pitch": 12, "width": 16, "text": "FLOOR 10\nStaff only", "color": "#6a4c93" },
+          { "kind": "puddle", "yaw": 150, "pitch": -38 },
+          { "kind": "door", "yaw": -148, "pitch": 0, "width": 14, "text": "FIRE EXIT", "signColor": "#138a36" },
+          { "kind": "boxes", "yaw": -148, "pitch": -11 },
+          { "kind": "extinguisher", "yaw": -122, "pitch": -12 },
+          { "kind": "cable", "yaw": -88, "pitch": -34, "width": 34 },
+          { "kind": "workstation", "yaw": -88, "pitch": -12 },
+          { "kind": "plant", "yaw": 62, "pitch": -15 }
+        ]
+      }
+    },
+
+    "lobby": {
+      "title": "Exit lobby — Ground floor",
+      "initialView": { "yaw": 0, "pitch": 0 },
+      "media": {
+        "type": "placeholder",
+        "theme": "lobby",
+        "label": "Exit lobby",
+        "objects": [
+          { "kind": "door", "yaw": 0, "pitch": 4, "glass": true, "width": 26, "text": "EXIT TO STREET", "signColor": "#1f6f5c" },
+          { "kind": "exitsign", "yaw": 0, "pitch": 26, "text": "EXIT" },
+          { "kind": "turnstile", "yaw": 0, "pitch": -10 },
+          { "kind": "badgebox", "yaw": 30, "pitch": -4, "text": "VISITOR BADGES" },
+          { "kind": "sign", "yaw": -34, "pitch": 10, "width": 20, "text": "Thank you for\nvisiting HQ", "color": "#1f6f5c" },
+          { "kind": "plant", "yaw": 48, "pitch": -15 },
+          { "kind": "plant", "yaw": -48, "pitch": -15 },
+          { "kind": "sofa", "yaw": 95, "pitch": -15 },
+          { "kind": "window", "yaw": -100, "pitch": 6, "width": 50 },
+          { "kind": "elevator", "yaw": 180, "pitch": 0, "text": "G" }
+        ]
+      }
+    }
+  },
+
+  "steps": [
+    {
+      "type": "info",
+      "scene": "reception",
+      "title": "Welcome to HQ",
+      "body": "This is the reception on the ground floor. Drag (or move your phone) to look around. Pinch or scroll to zoom. Each step asks you to find something or answer a question."
+    },
+    {
+      "type": "find",
+      "scene": "reception",
+      "title": "Find the first aid kit",
+      "prompt": "Look around reception and tap on the first aid kit.",
+      "targets": [{ "yaw": 96, "pitch": 7, "radius": 8, "label": "First aid kit" }],
+      "maxAttempts": 3,
+      "hint": "First aid kits are wall-mounted and marked with a white cross on green. Try looking to your right, near the lifts.",
+      "explain": "The first aid kit is on the wall next to the lifts. Trained first aiders are listed on the notice board at reception — call reception on ext. 100 if someone needs help."
+    },
+    {
+      "type": "info",
+      "scene": "floor10",
+      "title": "Lanyard colours",
+      "body": "You're now on the 10th floor. At HQ lanyard colours tell you who someone is:\n• Blue — staff\n• Green — contractor\n• Red — visitor (must be escorted at all times)"
+    },
+    {
+      "type": "find",
+      "scene": "floor10",
+      "title": "Spot the security risk",
+      "prompt": "Something on this floor isn't right from a security point of view. Find it and tap on it.",
+      "targets": [{ "yaw": 118, "pitch": -2, "radius": 9, "label": "Unescorted visitor" }],
+      "maxAttempts": 3,
+      "hint": "Check everyone's lanyard colour. Is anyone on their own who shouldn't be?",
+      "explain": "A visitor (red lanyard) is alone next to a confidential whiteboard and an unlocked computer."
+    },
+    {
+      "type": "quiz",
+      "scene": "floor10",
+      "question": "What's wrong in this scene?",
+      "options": [
+        "The window blinds are open",
+        "A visitor with a red lanyard is on the floor without an escort",
+        "A colleague is working at their desk",
+        "The lift is stopped on the 10th floor"
+      ],
+      "answer": 1,
+      "explain": "Red lanyards mean visitor. Visitors must be escorted by their host at all times — here they're alone beside confidential information."
+    },
+    {
+      "type": "quiz",
+      "scene": "floor10",
+      "question": "What should you do?",
+      "options": [
+        "Nothing — they got past reception, so they must be allowed",
+        "Take a photo of them and post it in the team chat",
+        "Politely offer help, find their host or walk them back to reception, and report it to Security",
+        "Tell them to leave the building immediately"
+      ],
+      "answer": 2,
+      "explain": "Be polite but don't ignore it. Offer to help, reunite them with their host or escort them to reception, and let Security (ext. 222) know so it can be followed up.",
+      "shuffle": true
+    },
+    {
+      "type": "find",
+      "scene": "floor10",
+      "title": "Hazard hunt",
+      "prompt": "There are 3 health & safety hazards on this floor. Find and tap all of them.",
+      "targets": [
+        { "yaw": -148, "pitch": -6, "radius": 12, "label": "Blocked fire exit" },
+        { "yaw": -88, "pitch": -34, "radius": 12, "label": "Trailing cable" },
+        { "yaw": 150, "pitch": -38, "radius": 12, "label": "Spill with no warning sign" }
+      ],
+      "maxAttempts": 6,
+      "hint": "Look behind you, and look down at the floor.",
+      "explain": "Blocked exits, trip hazards and unmarked spills are among the most common causes of office injuries."
+    },
+    {
+      "type": "explore",
+      "scene": "floor10",
+      "title": "How to check",
+      "prompt": "Tap each marker to learn what to look for and how to check it. Open them all to continue.",
+      "hotspots": [
+        {
+          "yaw": -148, "pitch": -6, "icon": "hazard", "risk": "high",
+          "title": "Fire exit",
+          "body": "Fire exits and the routes to them must be kept clear at all times.",
+          "checklist": ["Door is not obstructed on either side", "Door opens freely and closes fully", "Green running-man sign is lit", "Report obstructions to Facilities"]
+        },
+        {
+          "yaw": -122, "pitch": -12, "icon": "check", "risk": "info",
+          "title": "Fire extinguisher",
+          "body": "Know where your nearest extinguisher is and how to tell it's usable.",
+          "checklist": ["Safety pin and tamper seal intact", "Pressure gauge needle in the green", "Inspection tag dated within 12 months", "Mounted, not used as a door stop"]
+        },
+        {
+          "yaw": -88, "pitch": -34, "icon": "hazard", "risk": "medium",
+          "title": "Trailing cable",
+          "body": "Cables across walkways are a trip hazard.",
+          "checklist": ["Route cables along walls or under desks", "Use a cable cover if a cable must cross a walkway", "Don't daisy-chain extension leads", "Report damaged cables — don't use them"]
+        },
+        {
+          "yaw": 150, "pitch": -38, "icon": "hazard", "risk": "medium",
+          "title": "Spill",
+          "body": "Wet floors cause slips — clean up or cordon off straight away.",
+          "checklist": ["Put out a yellow wet-floor sign", "Clean up if safe, or call Facilities (ext. 300)", "Remove the sign once the floor is dry"]
+        }
+      ],
+      "requireAll": true
+    },
+    {
+      "type": "quiz",
+      "scene": "lobby",
+      "question": "You're leaving the office for the day. What should you do before you leave the building?",
+      "options": [
+        "Keep your badge on so security outside can see who you are",
+        "Hold the door open for the person behind you",
+        "Take your badge off and put it out of sight",
+        "Leave your badge on the reception desk"
+      ],
+      "answer": 2,
+      "explain": "A visible badge outside tells strangers where you work and can be photographed and cloned. Take it off and put it away before you step outside. Visitors: drop your badge in the visitor badge box."
+    },
+    {
+      "type": "info",
+      "scene": "lobby",
+      "title": "You're done!",
+      "body": "Thanks for completing the HQ site induction. Your results are on the next screen."
+    }
+  ]
+}

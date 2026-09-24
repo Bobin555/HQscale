@@ -1,0 +1,10 @@
+{
+  "name": "hqscale",
+  "private": true,
+  "type": "module",
+  "description": "Lightweight 360° site induction & HSE training web app (no build step).",
+  "scripts": {
+    "start": "npx --yes http-server . -p 8080 -c-1",
+    "test": "node --test tests/*.test.js"
+  }
+}
