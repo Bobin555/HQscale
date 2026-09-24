@@ -560,8 +560,10 @@ if (params.has('author') || location.hash === '#author') {
   renderModules();
 }
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+// Offline support. Skipped in single-file builds, and guarded because sandboxed frames
+// throw when navigator.serviceWorker is even accessed.
+if (!window.HQSCALE_EMBED && location.protocol === 'https:') {
+  try { navigator.serviceWorker?.register('sw.js').catch(() => {}); } catch {}
 }
 
 // Handy for debugging from the browser console and for automated tests.
