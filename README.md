@@ -63,7 +63,7 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
    }
    ```
    or `{ "type": "video", "src": "media/lobby.mp4" }`.
-3. **Find coordinates** with the authoring tool: open `/?author=1` (or `/?author=1&scenario=scenarios/your-file.json`).
+3. **Find coordinates** with the authoring tool: open `/#author`, or `/?author=1&scenario=scenarios/your-file.json` to load a different module.
    Pick a scene or open a local 360 photo or video, then tap on the things you want learners to find. The tool
    lists each point's `yaw` and `pitch` ready to copy, and draws the existing targets as dashed circles so you can
    check they're the right size.
@@ -137,3 +137,8 @@ Nothing is sent to a server. To report completions centrally, see the roadmap.
 - **Central reporting**: post results to an LMS (SCORM/xAPI), a Microsoft Form/SharePoint list, or a small API.
 - **Visual editor**: build whole modules in the browser (the current authoring tool only captures coordinates).
 - Audio narration, multiple languages, and scene-to-scene navigation arrows for free exploration.
+
+## Single-file build
+
+`npm run bundle` writes `dist/hqscale.html`, one self-contained file with the CSS, JavaScript, modules and icon inlined.
+Use it where you can only host or send a single file. Images and videos referenced by `src` still need to be hosted next to it.

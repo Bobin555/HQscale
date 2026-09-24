@@ -181,3 +181,6 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.modal { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
+.modal .modal-card { position: static; transform: none; width: min(420px, 100%); animation: none; }

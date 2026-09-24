@@ -118,10 +118,17 @@ function missMarker(x, y) {
 
 let run = null; // { scenario, index, results[], startedAt, name, cleanup }
 
-async function loadScenario(url) {
+// Single-file builds (see tools/bundle.mjs) embed the JSON files instead of fetching them.
+const EMBEDDED = window.HQSCALE_EMBED || {};
+async function fetchJson(url) {
+  if (EMBEDDED[url]) return structuredClone(EMBEDDED[url]);
   const res = await fetch(url, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`Could not load ${url} (${res.status})`);
-  const s = await res.json();
+  return res.json();
+}
+
+async function loadScenario(url) {
+  const s = await fetchJson(url);
   validateScenario(s);
   return s;
 }
@@ -344,12 +351,20 @@ function finish() {
     <div class="actions-row">
       <button class="btn" id="res-retry">Try again</button>
       <button class="btn secondary" id="res-csv">Download record (CSV)</button>
+      <button class="btn secondary" id="res-copy">Copy results</button>
       <button class="btn secondary" id="res-home">Back to modules</button>
     </div>`;
   ui.results.hidden = false;
   $('#res-retry').onclick = () => startScenario(s);
   $('#res-home').onclick = goHome;
   $('#res-csv').onclick = () => downloadCsv(record);
+  // Some hosts (e.g. sandboxed embeds) block file downloads; builds for them set this flag.
+  if (window.HQSCALE_NO_DOWNLOADS) $('#res-csv').hidden = true;
+  $('#res-copy').onclick = async () => {
+    const text = `${s.title}${run.name ? ` — ${run.name}` : ''}\nScore ${pct}% (${pass ? 'passed' : 'not passed'}) · ${record.date.slice(0, 10)}\n`
+      + scored.map((r) => `${r.correct ? '✓' : '✕'} ${r.title} — ${r.detail}`).join('\n');
+    try { await navigator.clipboard.writeText(text); toast('Results copied', 'good'); } catch { toast('Copy was blocked on this device', 'bad'); }
+  };
 }
 
 function downloadCsv(r) {
@@ -382,8 +397,7 @@ async function renderModules() {
   try { ui.name.value = localStorage.getItem('hqscale.name') || ''; } catch {}
   let list;
   try {
-    const res = await fetch('scenarios/index.json', { cache: 'no-cache' });
-    list = (await res.json()).modules;
+    list = (await fetchJson('scenarios/index.json')).modules;
   } catch {
     list = [{ file: 'scenarios/hq-induction.json', title: 'HQ Site Induction' }];
   }
@@ -405,13 +419,25 @@ async function openScenario(file) {
     await startScenario(s);
   } catch (err) {
     ui.loading.hidden = true;
-    alert(err.message);
+    ui.home.hidden = false;
+    toast(err.message, 'bad', 6000);
   }
 }
 
 // ---------------------------------------------------------------- chrome buttons
 
-ui.btnExit.onclick = () => { if (confirm('Leave this module? Your progress will be lost.')) goHome(); };
+// In-page confirmation (native confirm() dialogs are blocked in some embedded viewers).
+ui.btnExit.onclick = () => {
+  const box = document.createElement('div');
+  box.className = 'modal';
+  box.innerHTML = `<div class="card modal-card" role="dialog" aria-modal="true" aria-labelledby="leave-title">
+    <h2 id="leave-title">Leave this module?</h2><p>Your progress will be lost.</p>
+    <div class="card-actions"><button class="btn secondary" data-stay>Stay</button><button class="btn" data-leave>Leave</button></div></div>`;
+  box.querySelector('[data-stay]').onclick = () => box.remove();
+  box.querySelector('[data-leave]').onclick = () => { box.remove(); goHome(); };
+  document.body.append(box);
+  box.querySelector('[data-stay]').focus();
+};
 ui.btnVideo.onclick = () => viewer.toggleVideo();
 
 if (isTouch && PanoViewer.gyroSupported) ui.btnGyro.hidden = false;
@@ -434,7 +460,7 @@ async function startAuthor() {
   try {
     scenario = await loadScenario(file);
   } catch (err) {
-    alert(err.message);
+    toast(err.message, 'bad', 6000);
     scenario = { scenes: {}, steps: [] };
   }
   currentScenario = scenario;
@@ -449,13 +475,17 @@ async function startAuthor() {
       <strong>Authoring</strong>
       <select id="au-scene" aria-label="Scene">${Object.entries(scenario.scenes).map(([id, s]) => `<option value="${esc(id)}">${esc(s.title || id)}</option>`).join('')}</select>
       <label class="btn secondary small">Open 360 photo/video…<input id="au-file" type="file" accept="image/*,video/*" hidden></label>
-      <a class="btn secondary small" href="./">Exit</a>
+      <button class="btn secondary small" id="au-exit">Exit</button>
     </div>
     <div class="row"><span class="readout" id="au-view"></span></div>
     <div class="muted" style="font-size:13px">Tap anywhere in the view to capture its yaw/pitch. Dashed circles show the targets and hotspots already defined for this scene.</div>
     <pre id="au-out">[]</pre>
     <div class="row"><button class="btn small" id="au-copy">Copy</button><button class="btn secondary small" id="au-clear">Clear</button></div>`;
 
+  $('#au-exit').onclick = () => {
+    if (params.has('author')) location.href = './';
+    else { history.replaceState(null, '', location.pathname + location.search); location.reload(); }
+  };
   const out = $('#au-out');
   const refresh = () => (out.textContent = picks.length ? `[\n${picks.map((p) => `  { "yaw": ${p.yaw}, "pitch": ${p.pitch}, "radius": 8, "label": "" }`).join(',\n')}\n]` : '[]');
 
@@ -519,7 +549,9 @@ async function startAuthor() {
 
 // ---------------------------------------------------------------- boot
 
-if (params.has('author')) {
+// The authoring tool opens from ?author=1 or #author (hash links work in hosts that strip query strings).
+window.addEventListener('hashchange', () => { if (location.hash === '#author') location.reload(); });
+if (params.has('author') || location.hash === '#author') {
   startAuthor();
 } else if (params.get('scenario')) {
   ui.home.hidden = true;
