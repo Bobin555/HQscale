@@ -11,7 +11,7 @@ look around a real site in 360°, and complete short tasks:
 At the end, learners see their score and pass/fail against the module's pass mark. They can also download a CSV record.
 
 The app has no build step and no dependencies. It is plain HTML, CSS and JavaScript with a small WebGL
-panorama renderer (about 60 KB in total, excluding your media). It works offline after the first
+panorama renderer (about 80 KB in total, around 25 KB gzipped, excluding your media). It works offline after the first
 visit and can be installed to a phone's home screen (PWA).
 
 ## Try it
