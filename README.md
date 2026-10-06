@@ -72,6 +72,47 @@ Coordinates: `yaw` runs from −180 to 180, where 0 is the centre of the image a
 `pitch` runs from −90 to 90, where 0 is the horizon and positive values are up. The same numbers position the
 placeholder objects, targets and hotspots.
 
+### When a photo doesn't look right
+
+When you open a file, the authoring tool shows its size and how it will be displayed, and warns about these common problems:
+
+| What you see | Cause | Fix |
+|---|---|---|
+| Two round images side by side | Unstitched photo straight from the camera | Export from the camera app (Insta360 Studio, Theta, GoPro Player) as a 360° or equirectangular JPG |
+| A dark band above and below, and you can't look straight up | Phone panorama (a wide strip, not a full sphere) | Fine for a quick test. Use a 360 camera for a full sphere |
+| You can only turn part of the way round | Normal photo or partial panorama | Use a 2:1 360° image |
+| Error opening `.insp`, `.insv`, `.360` or `.heic` | Raw camera file, or an iPhone HEIC photo | Export as JPG or MP4 first |
+| Blurry | Image smaller than about 4096×2048 | Export at full resolution |
+
+If the app guesses a partial panorama's coverage wrong, set it in the scene: `"media": { "type": "image", "src": "...", "hfov": 180, "vfov": 90 }`
+(degrees across and degrees up and down).
+
+## Adding a new scenario
+
+Each scenario (site induction, warehouse walk, fire safety, security awareness…) is its own **module**: one JSON
+file plus a folder of photos. Nothing in the app's code changes when you add one.
+
+```bash
+npm run new-module -- warehouse "Warehouse Safety Walk"   # creates scenarios/warehouse.json + media/warehouse/
+# 1. put your 360° photos in media/warehouse/ and point each scene's "media" at them
+# 2. open the app with #author to find positions for targets and hotspots
+# 3. write the steps (see "Writing a module" below)
+npm run validate                                          # checks every module and its media files
+```
+
+The new module appears on the home screen straight away. `npm run validate` also runs automatically before every
+GitHub Pages deploy, so a broken module can't go live.
+
+Suggested layout as the library grows:
+
+```
+scenarios/index.json            the list shown on the home screen (order = display order)
+scenarios/hq-induction.json     one file per module
+scenarios/warehouse.json
+media/hq/reception.jpg          one folder per site; several modules can share the same photos
+media/warehouse/loading-bay.jpg
+```
+
 ## Writing a module
 
 A module is one JSON file in `scenarios/`, listed in `scenarios/index.json`. You can deep-link straight into a module:
@@ -106,8 +147,9 @@ A module is one JSON file in `scenarios/`, listed in `scenarios/index.json`. You
 }
 ```
 
-`find` and `quiz` steps are scored. `info` and `explore` steps are not. The app checks the file when it loads it and
-lists any problems, such as an unknown scene or a quiz answer index that's out of range.
+`find` and `quiz` steps are scored. `info` and `explore` steps are not. The app checks the file when it loads it, and
+`npm run validate` checks every module. Both list problems in plain language, such as an unknown scene or a quiz answer
+that's out of range.
 
 ## Project layout
 
@@ -117,10 +159,12 @@ css/styles.css          UI (mobile-first, safe-area aware)
 js/viewer.js            WebGL 360° viewer: image/video, drag/pinch/keys/gyro, pinned DOM markers
 js/placeholder.js       draws stand-in rooms until real footage exists
 js/main.js              module runner (steps, scoring, results, authoring tool)
+js/validate.js          module checks, shared by the app and npm run validate
 scenarios/*.json        training content
 media/                  your 360° photos / videos
 sw.js                   offline support (network-first cache)
-tests/                  unit tests for the coordinate maths (npm test)
+tools/                  new-module, validate and bundle scripts
+tests/                  unit tests (npm test)
 ```
 
 ## Results and privacy

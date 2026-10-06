@@ -184,3 +184,7 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
 
 .modal { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
 .modal .modal-card { position: static; transform: none; width: min(420px, 100%); animation: none; }
+.au-media { font-size: 13px; padding: 8px 10px; border-radius: 10px; background: rgba(46,204,113,.12); border: 1px solid rgba(46,204,113,.35); }
+.au-media.warn { background: rgba(255,176,32,.12); border-color: rgba(255,176,32,.5); }
+.au-media p { margin: 6px 0 0; }
+.au-media .ok { color: var(--good); }

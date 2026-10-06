@@ -38,16 +38,19 @@ const FRAG2 = `#version 300 es
 precision highp float;
 in vec2 vNdc; out vec4 outColor;
 uniform sampler2D uTex; uniform vec3 uF, uR, uU; uniform vec2 uScale;
+uniform vec2 uCover; // horizontal / vertical coverage of the image, radians (2π × π for a full sphere)
 const float PI = 3.141592653589793;
 void main() {
   vec3 d = normalize(uF + uR * vNdc.x * uScale.x + uU * vNdc.y * uScale.y);
-  vec2 uv = vec2(atan(d.x, -d.z) / (2.0 * PI) + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
+  vec2 uv = vec2(atan(d.x, -d.z) / uCover.x + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / uCover.y);
   vec2 gx = dFdx(uv), gy = dFdy(uv);
   float u2 = fract(uv.x + 0.5);
   float gx2 = dFdx(u2), gy2 = dFdy(u2);
   if (abs(gx2) < abs(gx.x)) gx.x = gx2;
   if (abs(gy2) < abs(gy.x)) gy.x = gy2;
-  outColor = textureGrad(uTex, uv, gx, gy);
+  vec4 c = textureGrad(uTex, uv, gx, gy);
+  bool outside = uv.y < 0.0 || uv.y > 1.0 || (uCover.x < 6.28 && (uv.x < 0.0 || uv.x > 1.0));
+  outColor = outside ? vec4(0.07, 0.09, 0.12, 1.0) : c;
 }`;
 
 const VERT1 = `attribute vec2 aPos; varying vec2 vNdc;
@@ -55,11 +58,13 @@ void main() { vNdc = aPos; gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
 const FRAG1 = `precision highp float;
 varying vec2 vNdc;
-uniform sampler2D uTex; uniform vec3 uF, uR, uU; uniform vec2 uScale;
+uniform sampler2D uTex; uniform vec3 uF, uR, uU; uniform vec2 uScale; uniform vec2 uCover;
 const float PI = 3.141592653589793;
 void main() {
   vec3 d = normalize(uF + uR * vNdc.x * uScale.x + uU * vNdc.y * uScale.y);
-  gl_FragColor = texture2D(uTex, vec2(atan(d.x, -d.z) / (2.0 * PI) + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI));
+  vec2 uv = vec2(atan(d.x, -d.z) / uCover.x + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / uCover.y);
+  bool outside = uv.y < 0.0 || uv.y > 1.0 || (uCover.x < 6.28 && (uv.x < 0.0 || uv.x > 1.0));
+  gl_FragColor = outside ? vec4(0.07, 0.09, 0.12, 1.0) : texture2D(uTex, uv);
 }`;
 
 export class PanoViewer {
@@ -78,6 +83,7 @@ export class PanoViewer {
     this.velocity = { yaw: 0, pitch: 0 };
     this.anim = null;
     this.gyro = null;
+    this.coverage = { hfov: 360, vfov: 180 };
 
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'pano-canvas';
@@ -122,7 +128,8 @@ export class PanoViewer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-    this.u = Object.fromEntries(['uF', 'uR', 'uU', 'uScale', 'uTex'].map((n) => [n, gl.getUniformLocation(prog, n)]));
+    this.u = Object.fromEntries(['uF', 'uR', 'uU', 'uScale', 'uTex', 'uCover'].map((n) => [n, gl.getUniformLocation(prog, n)]));
+    gl.uniform2f(this.u.uCover, 2 * Math.PI, Math.PI);
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([20, 22, 28, 255]));
@@ -131,7 +138,8 @@ export class PanoViewer {
 
   #setTexParams(mipmaps) {
     const gl = this.gl;
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, this.isGL2 ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+    const wrap = this.isGL2 && this.coverage.hfov >= 360;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap ? gl.REPEAT : gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -164,23 +172,27 @@ export class PanoViewer {
    *   { type: 'image', src }                     — equirectangular JPG/PNG/WebP
    *   { type: 'video', src, loop?, muted? }      — equirectangular MP4/WebM
    *   { type: 'canvas', canvas }                 — pre-rendered canvas (used for placeholders)
+   * Optional `hfov` / `vfov` (degrees) describe a partial panorama; otherwise they're worked
+   * out from the image's shape (2:1 = full sphere, wider = a strip such as a phone panorama).
+   * Resolves to { width, height, hfov, vfov, warnings[] } so authoring tools can flag problems.
    */
   async load(media) {
     this.#stopVideo();
+    let source, w, h;
     if (media.type === 'canvas') {
-      this.#uploadStatic(media.canvas, media.canvas.width, media.canvas.height);
-      return;
-    }
-    if (media.type === 'image') {
+      source = media.canvas; w = source.width; h = source.height;
+    } else if (media.type === 'image') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.decoding = 'async';
       img.src = media.src;
-      await img.decode();
-      this.#uploadStatic(img, img.naturalWidth, img.naturalHeight);
-      return;
-    }
-    if (media.type === 'video') {
+      try {
+        await img.decode();
+      } catch {
+        throw new Error(`Couldn't open the image "${media.name || media.src}". Use a JPG, PNG or WebP file.`);
+      }
+      source = img; w = img.naturalWidth; h = img.naturalHeight;
+    } else if (media.type === 'video') {
       const v = document.createElement('video');
       v.crossOrigin = 'anonymous';
       v.src = media.src;
@@ -192,13 +204,30 @@ export class PanoViewer {
       this.video = v;
       await new Promise((resolve, reject) => {
         v.addEventListener('loadeddata', resolve, { once: true });
-        v.addEventListener('error', () => reject(new Error(`Could not load video ${media.src}`)), { once: true });
+        v.addEventListener('error', () => reject(new Error(`Couldn't play the video "${media.name || media.src}". Use an H.264 MP4 file.`)), { once: true });
       });
-      this.#setTexParams(false);
-      await v.play().catch(() => {}); // autoplay may need a user gesture; resumed on next tap
-      return;
+      w = v.videoWidth; h = v.videoHeight;
+    } else {
+      throw new Error(`Unsupported media type "${media.type}"`);
     }
-    throw new Error(`Unsupported media type "${media.type}"`);
+
+    const info = { width: w, height: h, ...describeCoverage(w, h, media) };
+    if (source && media.type === 'image') {
+      const fisheye = looksLikeDualFisheye(source);
+      if (fisheye) info.warnings.push('This looks like an unstitched photo straight from a 360 camera (two round images side by side). Export it from the camera app as a "360° / equirectangular" photo first.');
+    }
+    this.coverage = { hfov: info.hfov, vfov: info.vfov };
+    this.gl.uniform2f(this.u.uCover, info.hfov * DEG, info.vfov * DEG);
+
+    if (media.type === 'video') {
+      this.#setTexParams(false);
+      await this.video.play().catch(() => {}); // autoplay may need a user gesture; resumed on next tap
+    } else {
+      this.#uploadStatic(source, w, h);
+    }
+    this.#clampView();
+    this.dirty = true;
+    return info;
   }
 
   #stopVideo() {
@@ -228,9 +257,27 @@ export class PanoViewer {
   setView({ yaw = this.yaw, pitch = this.pitch, fov = this.fov } = {}) {
     this.anim = null;
     this.yaw = ((yaw + 540) % 360) - 180;
-    this.pitch = clamp(pitch, -89, 89);
-    this.fov = clamp(fov, this.minFov, this.maxFov);
+    this.pitch = pitch;
+    this.fov = fov;
+    this.#clampView();
     this.dirty = true;
+  }
+
+  /** Keeps zoom and direction inside the photo (matters for partial panoramas). */
+  #clampView() {
+    const { hfov, vfov } = this.coverage;
+    this.fov = clamp(this.fov, this.minFov, Math.min(this.maxFov, vfov));
+    if (vfov >= 179) {
+      this.pitch = clamp(this.pitch, -89, 89);
+    } else {
+      const lim = Math.max(0, vfov / 2 - this.fov / 2);
+      this.pitch = clamp(this.pitch, -lim, lim);
+    }
+    if (hfov < 360) {
+      const halfH = Math.atan(Math.tan((this.fov * DEG) / 2) * this.aspect) / DEG;
+      const lim = Math.max(0, hfov / 2 - halfH);
+      this.yaw = clamp(this.yaw, -lim, lim);
+    }
   }
 
   /** Smoothly turn the camera to face a point (used for hints / reveals). */
@@ -393,7 +440,8 @@ export class PanoViewer {
       this.anim = null;
       this.velocity = { yaw: 0, pitch: 0 };
       this.yaw = ((yaw + this.gyro.offset + 540) % 360) - 180;
-      this.pitch = clamp(pitch, -89, 89);
+      this.pitch = pitch;
+      this.#clampView();
       this.dirty = true;
     };
     window.addEventListener('deviceorientation', this.gyro.handler);
@@ -418,6 +466,7 @@ export class PanoViewer {
     this.canvas.height = Math.max(1, Math.round(height * dpr));
     // On portrait phones widen the vertical FOV a little so there's more to see.
     this.maxFov = this.aspect < 0.8 ? 110 : 100;
+    this.#clampView();
     this.dirty = true;
   }
 
@@ -428,12 +477,14 @@ export class PanoViewer {
       const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
       this.yaw = ((this.anim.from.yaw + this.anim.dy * e + 540) % 360) - 180;
       this.pitch = this.anim.from.pitch + this.anim.dp * e;
+      this.#clampView();
       this.dirty = true;
       if (t >= 1) this.anim = null;
     } else if (Math.abs(this.velocity.yaw) + Math.abs(this.velocity.pitch) > 0.001) {
       // Fling inertia after a drag.
       this.yaw = ((this.yaw + this.velocity.yaw * 16 + 540) % 360) - 180;
-      this.pitch = clamp(this.pitch + this.velocity.pitch * 16, -89, 89);
+      this.pitch = this.pitch + this.velocity.pitch * 16;
+      this.#clampView();
       this.velocity.yaw *= 0.92;
       this.velocity.pitch *= 0.92;
       this.dirty = true;
@@ -466,6 +517,50 @@ export class PanoViewer {
     this.#stopVideo();
     this.canvas.remove();
     this.overlay.remove();
+  }
+}
+
+/**
+ * How much of the sphere an image covers. 2:1 is a full 360°×180° sphere; a wider image is
+ * treated as a 360° strip with less vertical coverage (phone panoramas); a narrower one as a
+ * partial panorama. Explicit `hfov` / `vfov` in the scene's media always win.
+ */
+export function describeCoverage(w, h, media = {}) {
+  const warnings = [];
+  const aspect = w / h;
+  let hfov = media.hfov, vfov = media.vfov;
+  if (hfov && !vfov) vfov = Math.min(180, (hfov / aspect));
+  if (vfov && !hfov) hfov = Math.min(360, vfov * aspect);
+  if (!hfov && !vfov) {
+    if (Math.abs(aspect - 2) <= 0.04) {
+      hfov = 360; vfov = 180;
+    } else if (aspect > 2) {
+      hfov = 360; vfov = 360 / aspect;
+      warnings.push(`This image is ${w}×${h} (${aspect.toFixed(1)}:1), so it's shown as a 360° strip covering ${Math.round(vfov)}° up and down. Phone panoramas look like this. For a full sphere use a 360 camera (2:1 image).`);
+    } else {
+      vfov = 180; hfov = 180 * aspect;
+      warnings.push(`This image is ${w}×${h} (${aspect.toFixed(2)}:1), which isn't a full 360° photo (that would be 2:1). It's shown as a ${Math.round(hfov)}° view. If it is a 360° photo, export it from the camera app as "equirectangular".`);
+    }
+  }
+  hfov = clamp(hfov, 10, 360);
+  vfov = clamp(vfov, 10, 180);
+  if (Math.max(w, h) < 2000 && hfov >= 300) warnings.push(`This image is only ${w}×${h}, so it will look blurry. 360° photos need at least 4096×2048.`);
+  return { hfov, vfov, warnings };
+}
+
+// Unstitched dual-fisheye frames are 2:1 too, but have black corners and a black gap
+// between the two circles. A full equirectangular photo almost never does.
+function looksLikeDualFisheye(source) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 32;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(source, 0, 0, 64, 32);
+    const px = g.getImageData(0, 0, 64, 32).data;
+    const dark = ([x, y]) => { const i = (y * 64 + x) * 4; return px[i] + px[i + 1] + px[i + 2] < 45; };
+    return [[0, 0], [63, 0], [0, 31], [63, 31], [32, 0], [32, 31]].filter(dark).length >= 5;
+  } catch {
+    return false; // cross-origin image without CORS: can't inspect pixels
   }
 }
 

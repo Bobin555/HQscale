@@ -1,5 +1,6 @@
 import { PanoViewer, angularDistance } from './viewer.js';
 import { paintPlaceholder } from './placeholder.js';
+import { validateScenario } from './validate.js';
 
 const $ = (sel) => document.querySelector(sel);
 const params = new URLSearchParams(location.search);
@@ -39,8 +40,10 @@ async function showScene(id, { force = false } = {}) {
   const scene = currentScenario.scenes[id];
   if (!scene) throw new Error(`Unknown scene "${id}"`);
   ui.loading.hidden = false;
+  let info = null;
   try {
-    await viewer.load(await mediaFor(scene));
+    info = await viewer.load(await mediaFor(scene));
+    info.warnings.forEach((w) => console.warn(`Scene "${id}": ${w}`));
   } catch (err) {
     toast(`Couldn't load this scene: ${err.message}`, 'bad', 5000);
   } finally {
@@ -51,6 +54,7 @@ async function showScene(id, { force = false } = {}) {
   ui.sceneTitle.textContent = scene.title || '';
   ui.btnVideo.hidden = scene.media.type !== 'video';
   preloadNext();
+  return info;
 }
 
 function preloadNext() {
@@ -129,19 +133,9 @@ async function fetchJson(url) {
 
 async function loadScenario(url) {
   const s = await fetchJson(url);
-  validateScenario(s);
+  const problems = validateScenario(s);
+  if (problems.length) throw new Error(`${url} has problems:\n• ${problems.join('\n• ')}`);
   return s;
-}
-
-function validateScenario(s) {
-  const problems = [];
-  if (!s.scenes || !s.steps) problems.push('scenario needs "scenes" and "steps"');
-  (s.steps || []).forEach((st, i) => {
-    if (!s.scenes?.[st.scene]) problems.push(`step ${i + 1}: unknown scene "${st.scene}"`);
-    if (st.type === 'quiz' && !(st.answer >= 0 && st.answer < (st.options || []).length)) problems.push(`step ${i + 1}: quiz "answer" must be an option index`);
-    if (st.type === 'find' && !st.targets?.length) problems.push(`step ${i + 1}: find step needs "targets"`);
-  });
-  if (problems.length) throw new Error(`Scenario has problems:\n• ${problems.join('\n• ')}`);
 }
 
 async function startScenario(scenario) {
@@ -478,6 +472,7 @@ async function startAuthor() {
       <button class="btn secondary small" id="au-exit">Exit</button>
     </div>
     <div class="row"><span class="readout" id="au-view"></span></div>
+    <div id="au-media" class="au-media" hidden></div>
     <div class="muted" style="font-size:13px">Tap anywhere in the view to capture its yaw/pitch. Dashed circles show the targets and hotspots already defined for this scene.</div>
     <pre id="au-out">[]</pre>
     <div class="row"><button class="btn small" id="au-copy">Copy</button><button class="btn secondary small" id="au-clear">Clear</button></div>`;
@@ -514,7 +509,20 @@ async function startAuthor() {
   });
 
   const sceneSel = $('#au-scene');
-  sceneSel.onchange = async () => { await showScene(sceneSel.value); drawOutlines(sceneSel.value); };
+  const showMediaInfo = (info, name) => {
+    const box = $('#au-media');
+    box.hidden = !info;
+    if (!info) return;
+    box.className = `au-media${info.warnings.length ? ' warn' : ''}`;
+    box.innerHTML = `<strong>${esc(name)}</strong> · ${info.width}×${info.height} · shown as ${Math.round(info.hfov)}° × ${Math.round(info.vfov)}°`
+      + (info.warnings.length ? info.warnings.map((w) => `<p>⚠ ${esc(w)}</p>`).join('') : ' · <span class="ok">✓ looks like a proper 360° image</span>');
+  };
+  sceneSel.onchange = async () => {
+    const info = await showScene(sceneSel.value, { force: true });
+    drawOutlines(sceneSel.value);
+    const m = scenario.scenes[sceneSel.value].media;
+    showMediaInfo(m.type === 'placeholder' ? null : info, m.src);
+  };
   if (sceneSel.value) sceneSel.onchange();
 
   $('#au-file').onchange = async (e) => {
@@ -523,9 +531,25 @@ async function startAuthor() {
     currentSceneId = null;
     outlines.forEach((m) => viewer.removeMarker(m));
     outlines.length = 0;
-    await viewer.load({ type: f.type.startsWith('video') ? 'video' : 'image', src: URL.createObjectURL(f) });
-    viewer.setView({ yaw: 0, pitch: 0, fov: 75 });
-    toast(`Previewing ${f.name}`);
+    const ext = f.name.split('.').pop().toLowerCase();
+    const hints = {
+      insp: 'This is a raw Insta360 photo. Export it from Insta360 Studio or the Insta360 app as a 360° JPG first.',
+      insv: 'This is a raw Insta360 video. Export it from Insta360 Studio or the Insta360 app as a 360° MP4 first.',
+      '360': 'This is a raw GoPro 360 file. Export it from GoPro Player as a 360° MP4 first.',
+      heic: 'HEIC photos only open in Safari. Save the photo as JPG (on iPhone: Settings → Camera → Formats → Most Compatible).',
+    };
+    if (hints[ext]) { showMediaInfo(null); toast(hints[ext], 'bad', 8000); return; }
+    ui.loading.hidden = false;
+    try {
+      const info = await viewer.load({ type: f.type.startsWith('video') ? 'video' : 'image', src: URL.createObjectURL(f), name: f.name });
+      viewer.setView({ yaw: 0, pitch: 0, fov: 75 });
+      showMediaInfo(info, f.name);
+    } catch (err) {
+      showMediaInfo(null);
+      toast(err.message, 'bad', 6000);
+    } finally {
+      ui.loading.hidden = true;
+    }
   };
 
   viewer.onTap(({ yaw, pitch }) => {
