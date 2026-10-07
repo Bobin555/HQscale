@@ -6,7 +6,7 @@
 // ("media/<module-id>/<file>"); while building, they're shown from a local blob URL.
 
 import { validateScenario } from './validate.js';
-import { sprite, SPRITES } from './placeholder.js';
+import { sprite, SPRITES, propElement, propTransform, sameMoment } from './placeholder.js';
 import { HAZARDS, HAZARD_CATEGORIES } from './hazards.js';
 
 const DRAFT_KEY = 'hqscale.builder.draft';
@@ -131,13 +131,16 @@ export function startBuilder(api) {
   }
   vbar.addEventListener('input', (e) => {
     if (e.target.dataset.v !== 'seek') return;
-    viewer.seekVideo(Number(e.target.value)).then(() => { vbar.querySelector('.bld-vtime').textContent = `${fmtTime(viewer.videoTime)} / ${fmtTime(viewer.videoDuration)}`; });
+    viewer.seekVideo(Number(e.target.value)).then(() => {
+      vbar.querySelector('.bld-vtime').textContent = `${fmtTime(viewer.videoTime)} / ${fmtTime(viewer.videoDuration)}`;
+      drawMarkers();
+    });
   });
   vbar.addEventListener('change', (e) => { if (e.target.dataset.v === 'seek') renderVideoBar(); });
   vbar.addEventListener('click', async (e) => {
     const v = e.target.closest('[data-v]')?.dataset.v;
     const st = step();
-    if (v === 'play') { viewer.toggleVideo(); renderVideoBar(); }
+    if (v === 'play') { viewer.toggleVideo(); renderVideoBar(); drawMarkers(); }
     if (v === 'use' && st) {
       viewer.pauseVideo();
       st.videoTime = Math.round(viewer.videoTime * 100) / 100;
@@ -145,8 +148,9 @@ export function startBuilder(api) {
       toast(`Step ${editing + 1} will show the video at ${fmtTime(st.videoTime)}`, 'good');
       render();
       renderVideoBar();
+      drawMarkers();
     }
-    if (v === 'goto' && st) { await viewer.seekVideo(st.videoTime); renderVideoBar(); }
+    if (v === 'goto' && st) { await viewer.seekVideo(st.videoTime); renderVideoBar(); drawMarkers(); }
   });
   // Keep the time readout moving while the video plays.
   setInterval(() => {
@@ -201,37 +205,114 @@ export function startBuilder(api) {
 
   // ------------------------------------------------------------ markers in the 360 view
 
+  /**
+   * On a 360 video, a step's markers and pictures only fit the frame they were placed on, so
+   * outside the step being edited they're shown only when the video is paused on that moment.
+   */
+  function onScreenNow(s) {
+    if (!isVideoScene(s.scene)) return true;
+    return !!viewer.video && viewer.isVideoPaused && sameMoment(s.videoTime, viewer.videoTime);
+  }
+
   function drawMarkers() {
     markers.forEach((m) => viewer.removeMarker(m));
     markers = [];
-    // Pictures placed in the scene (they belong to the environment, so all are shown).
-    for (const s of draft.steps.filter((x) => x.scene === sceneId)) {
-      for (const p of points(s) || []) {
-        const spr = p.prop?.kind && sprite(p.prop.kind, p.prop.opts, p.prop.scale ?? 1);
-        if (!spr) continue;
-        const el = document.createElement('img');
-        el.className = 'scene-prop';
-        el.src = spr.url;
-        el.alt = '';
-        markers.push(viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: spr.size, under: true }));
-      }
-    }
     const st = step();
-    const list = st ? [[st, editing]] : draft.steps.map((s, i) => [s, i]).filter(([s]) => s.scene === sceneId);
+    // Pictures placed in the scene. Those of the step being edited can be moved, resized and rotated.
+    draft.steps.forEach((s, si) => {
+      if (s.scene !== sceneId || (s !== st && !onScreenNow(s))) return;
+      (points(s) || []).forEach((p, pi) => {
+        const pe = p.prop?.kind && propElement(p.prop);
+        if (!pe) return;
+        const m = viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el: pe.el, size: pe.size, under: true });
+        m.point = p;
+        markers.push(m);
+        if (s === st) makeEditable(m, p, pi, pe);
+      });
+    });
+    const list = st ? [[st, editing]] : draft.steps.map((s, i) => [s, i]).filter(([s]) => s.scene === sceneId && onScreenNow(s));
     for (const [s, si] of list) {
       (points(s) || []).forEach((p, pi) => {
         const el = document.createElement('div');
         const isFind = s.type === 'find';
-        el.className = `bld-point ${isFind ? 'find' : `hz ${p.icon || 'hazard'}`}${st ? '' : ' faded'}${moving === pi && st ? ' moving' : ''}`;
+        el.className = `bld-point ${isFind ? 'find' : `hz ${p.icon || 'hazard'}`}${st ? '' : ' faded'}${moving === pi && st ? ' moving' : ''}${p.prop?.kind ? ' has-prop' : ''}`;
         const label = isFind ? p.label : p.title;
         el.innerHTML = `${isFind ? '' : `<span class="dot">${{ hazard: '⚠', check: '✓', info: 'i' }[p.icon || 'hazard']}</span>`}<span class="tag">${pi + 1}. ${esc(label || (isFind ? 'Target' : 'Hazard'))}</span>`;
         el.onclick = () => { if (!st) editStep(si); else panel.querySelector(`[data-point="${pi}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
         const r = p.radius ?? 8;
-        markers.push(viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: isFind ? [2 * r, 2 * r] : undefined }));
+        const m = viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: isFind ? [2 * r, 2 * r] : undefined });
+        m.point = p;
+        markers.push(m);
       });
     }
   }
 
+  // ------------------------------------------------------------ moving, resizing and rotating pictures
+
+  function makeEditable(m, p, pi, pe) {
+    const el = m.el;
+    el.classList.add('editable');
+    el.title = 'Drag to move · corner to resize · top handle to rotate';
+    el.insertAdjacentHTML('beforeend', '<span class="h-scale" title="Drag to resize"></span><span class="h-rot" title="Drag to rotate"></span>');
+    const rect = () => viewer.container.getBoundingClientRect();
+    const centre = () => {
+      const sp = viewer.yawPitchToScreen(p.yaw, p.pitch);
+      const r = rect();
+      return sp ? { x: r.left + sp.x, y: r.top + sp.y } : null;
+    };
+    const follow = () => {
+      for (const mk of markers) if (mk.point === p) { mk.yaw = p.yaw; mk.pitch = p.pitch; }
+      viewer.dirty = true;
+    };
+    const resize = () => {
+      const fresh = propElement(p.prop);
+      m.size = fresh.size;
+      pe.img.src = fresh.img.src;
+      pe.img.style.transform = propTransform(p.prop);
+      viewer.dirty = true;
+    };
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      const handle = e.target.classList.contains('h-scale') ? 'scale' : e.target.classList.contains('h-rot') ? 'rotate' : 'move';
+      const c = centre();
+      if (!c) return;
+      freezeStepMoment(step());
+      const start = { x: e.clientX, y: e.clientY, off: { x: c.x - e.clientX, y: c.y - e.clientY }, d: Math.hypot(e.clientX - c.x, e.clientY - c.y) || 1, scale: p.prop.scale ?? 1 };
+      el.classList.add('dragging');
+      const onMove = (ev) => {
+        if (handle === 'move') {
+          const yp = viewer.screenToYawPitch(ev.clientX + start.off.x, ev.clientY + start.off.y);
+          p.yaw = Math.round(yp.yaw * 10) / 10;
+          p.pitch = Math.round(yp.pitch * 10) / 10;
+          follow();
+        } else {
+          const cc = centre();
+          if (!cc) return;
+          if (handle === 'scale') {
+            p.prop.scale = Math.round(Math.min(5, Math.max(0.2, start.scale * (Math.hypot(ev.clientX - cc.x, ev.clientY - cc.y) / start.d))) * 100) / 100;
+          } else {
+            p.prop.rotate = Math.round((Math.atan2(ev.clientX - cc.x, -(ev.clientY - cc.y)) * 180) / Math.PI);
+          }
+          resize();
+        }
+      };
+      const onUp = () => {
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        el.removeEventListener('pointercancel', onUp);
+        el.classList.remove('dragging');
+        save();
+        render();
+        drawMarkers();
+        panel.querySelector(`[data-point="${pi}"]`)?.scrollIntoView({ block: 'nearest' });
+      };
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+      el.addEventListener('pointercancel', onUp);
+    });
+  }
 
   viewer.onTap(({ yaw, pitch }) => {
     if (panel.hidden) return;
@@ -327,6 +408,7 @@ export function startBuilder(api) {
     </details>`;
   }
   let libraryOpen = true;
+  const adjustOpen = new Set(); // picture-adjust panels left open between re-renders
 
   // Drag and drop from the library onto the 360° view.
   const stage = viewer.container;
@@ -560,8 +642,20 @@ export function startBuilder(api) {
             <label>Picture in the scene <select data-scope="prop" data-i="${i}" data-f="kind">
               <option value="">None (it's already in the footage)</option>
               ${Object.entries(SPRITES).map(([k, n]) => `<option value="${k}" ${p.prop?.kind === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
-            ${p.prop?.kind ? `<label>Picture size <input type="range" min="0.3" max="3" step="0.1" data-scope="prop" data-i="${i}" data-f="scale" value="${p.prop.scale ?? 1}"></label>` : ''}
           </div>
+          ${p.prop?.kind ? `
+          <details class="bld-adjust" ${adjustOpen.has(i) ? 'open' : ''} data-adjust="${i}">
+            <summary>Adjust picture <em>(or drag it in the 360° view)</em></summary>
+            <div class="bld-adjust-grid">
+              ${[['scale', 'Size', 0.2, 5, 0.05, p.prop.scale ?? 1, (v) => `${Math.round(v * 100)}%`],
+                ['rotate', 'Rotate', -180, 180, 1, p.prop.rotate ?? 0, (v) => `${v}°`],
+                ['aspect', 'Width', 0.4, 2.5, 0.05, p.prop.aspect ?? 1, (v) => `${Math.round(v * 100)}%`],
+                ['flat', 'Lie flat', 0, 80, 1, p.prop.flat ?? 0, (v) => (v > 0 ? `${v}°` : 'upright')]]
+                .map(([f, l, mn, mx, stp, v, fmt]) => `<label>${l}<input type="range" min="${mn}" max="${mx}" step="${stp}" data-scope="prop" data-i="${i}" data-f="${f}" value="${v}"><output>${fmt(Number(v))}</output></label>`).join('')}
+              <label class="bld-check"><input type="checkbox" data-scope="prop" data-i="${i}" data-f="flip" ${p.prop.flip ? 'checked' : ''}> Mirror</label>
+              <button class="btn secondary small" data-act="reset-prop" data-i="${i}">Reset</button>
+            </div>
+          </details>` : ''}
           ${isFind ? `
             <label class="bld-range">Tap area <input type="range" min="3" max="25" data-scope="point" data-i="${i}" data-f="radius" value="${p.radius ?? 8}"> <span>${p.radius ?? 8}°</span></label>` : `
             <div class="bld-row">
@@ -624,7 +718,11 @@ export function startBuilder(api) {
         else delete p.prop;
         save(); render(); drawMarkers(); return;
       }
-      p.prop.scale = v;
+      p.prop[f] = v;
+      const out = el.nextElementSibling;
+      if (out?.tagName === 'OUTPUT') {
+        out.textContent = f === 'rotate' ? `${v}°` : f === 'flat' ? (v > 0 ? `${v}°` : 'upright') : `${Math.round(v * 100)}%`;
+      }
       drawMarkers();
     } else if (scope === 'opt') st.options[Number(el.dataset.i)] = v;
     else if (scope === 'point') {
@@ -636,7 +734,10 @@ export function startBuilder(api) {
     save();
   });
 
-  panel.addEventListener('toggle', (e) => { if (e.target.classList?.contains('bld-lib')) libraryOpen = e.target.open; }, true);
+  panel.addEventListener('toggle', (e) => {
+    if (e.target.classList?.contains('bld-lib')) libraryOpen = e.target.open;
+    if (e.target.dataset?.adjust != null) { const k = Number(e.target.dataset.adjust); if (e.target.open) adjustOpen.add(k); else adjustOpen.delete(k); }
+  }, true);
   panel.addEventListener('click', async (e) => {
     const hz = e.target.closest('[data-hz]');
     if (hz) {
@@ -679,11 +780,16 @@ export function startBuilder(api) {
       case 'up': moveStep(i, -1); break;
       case 'down': moveStep(i, 1); break;
       case 'del': confirmBox(`Delete "${stepTitle(draft.steps[i])}"?`, 'Delete', () => { draft.steps.splice(i, 1); save(); render(); drawMarkers(); }); break;
-      case 'done': editing = null; moving = null; render(); drawMarkers(); renderVideoBar(); break;
+      case 'done': editing = null; moving = null; adjustOpen.clear(); render(); drawMarkers(); renderVideoBar(); break;
       case 'add-opt': st.options.push(''); save(); render(); break;
       case 'look': viewer.lookAt(points(st)[i]); break;
       case 'move': moving = moving === i ? null : i; render(); drawMarkers(); if (moving != null) toast('Tap the view where it should go'); break;
-      case 'del-point': points(st).splice(i, 1); moving = null; save(); render(); drawMarkers(); break;
+      case 'del-point': points(st).splice(i, 1); moving = null; adjustOpen.clear(); save(); render(); drawMarkers(); break;
+      case 'reset-prop': {
+        const pr = points(st)[i].prop;
+        points(st)[i].prop = { kind: pr.kind, ...(pr.opts ? { opts: pr.opts } : {}), scale: 1 };
+        save(); render(); drawMarkers(); break;
+      }
       case 'preview': startPreview(); break;
       case 'save': saveModule(); break;
       case 'open-json': jsonInput.click(); break;

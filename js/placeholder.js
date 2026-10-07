@@ -526,3 +526,33 @@ export function sprite(kind, opts = {}, scale = 1) {
   }
   return { url, size: [(b[1] - b[0]) * scale, (b[3] - b[2]) * scale] };
 }
+
+/**
+ * How a placed picture sits in the scene. `prop` = { kind, opts?, scale?, rotate?, aspect?, flat?, flip? }:
+ * rotate in degrees, aspect stretches the width (1 = as drawn), flat squashes it vertically so it
+ * looks like it lies on the floor (0 = upright, 80 = almost flat), flip mirrors it.
+ */
+export function propTransform(prop) {
+  const flat = Math.cos(((prop.flat ?? 0) * Math.PI) / 180);
+  return `scaleY(${flat.toFixed(3)}) rotate(${prop.rotate ?? 0}deg) scaleX(${prop.flip ? -1 : 1})`;
+}
+
+/** Builds the element for a placed picture. Returns { el, img, size: [wDeg, hDeg] } or null. */
+export function propElement(prop) {
+  const spr = sprite(prop.kind, prop.opts, prop.scale ?? 1);
+  if (!spr) return null;
+  const el = document.createElement('div');
+  el.className = 'scene-prop';
+  const img = document.createElement('img');
+  img.src = spr.url;
+  img.alt = '';
+  img.draggable = false;
+  img.style.transform = propTransform(prop);
+  el.append(img);
+  return { el, img, size: [spr.size[0] * (prop.aspect ?? 1), spr.size[1]] };
+}
+
+/** Whether a step's pictures belong on the frame being shown (pictures on a 360 video only fit their own moment). */
+export function sameMoment(a, b) {
+  return typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < 0.2;
+}

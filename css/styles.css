@@ -264,7 +264,20 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
 @media (min-width: 761px) { body.has-builder .toast { left: calc(50% - 206px); max-width: calc(100% - 460px); } }
 
 /* pictures placed into a scene from the hazard library */
-.scene-prop { pointer-events: none; user-select: none; -webkit-user-drag: none; filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+.scene-prop { pointer-events: none; user-select: none; -webkit-user-select: none; }
+.scene-prop img { display: block; width: 100%; height: 100%; transform-origin: 50% 50%; pointer-events: none; -webkit-user-drag: none;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.45)); }
+/* editable pictures in the builder: drag to move, corner to resize, top handle to rotate */
+.scene-prop.editable { pointer-events: auto; cursor: move; outline: 2px dashed rgba(255,255,255,.75); outline-offset: 2px; touch-action: none; }
+.scene-prop.editable:hover, .scene-prop.editable.dragging { outline-color: var(--warn); }
+.scene-prop .h-scale, .scene-prop .h-rot { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,.5); touch-action: none; }
+.scene-prop .h-scale { right: -10px; bottom: -10px; cursor: nwse-resize; }
+.scene-prop .h-rot { left: 50%; top: -30px; margin-left: -8px; cursor: grab; }
+.scene-prop .h-rot::after { content: ""; position: absolute; left: 5px; top: 14px; width: 2px; height: 14px; background: #fff; }
+@media (pointer: coarse) { .scene-prop .h-scale, .scene-prop .h-rot { width: 24px; height: 24px; } .scene-prop .h-rot { margin-left: -12px; top: -38px; } }
+/* hotspot markers sit on their picture, so keep them out of the way of the handles */
+.bld-point.hz.has-prop { opacity: .85; }
 .stage.drop-target { outline: 4px dashed var(--accent); outline-offset: -8px; }
 
 /* hazard library */
@@ -293,3 +306,11 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
   .bld-vbar { right: 8px; left: 8px; bottom: auto; top: calc(8px + var(--safe-top)); }
   body.has-builder .toast { top: calc(76px + var(--safe-top)); }
 }
+
+.bld-adjust { border-top: 1px solid var(--line); padding-top: 6px; }
+.bld-adjust summary { cursor: pointer; font-size: 13px; }
+.bld-adjust summary em { font-style: normal; color: var(--muted); font-size: 12px; }
+.bld-adjust-grid { display: grid; gap: 6px; margin-top: 6px; }
+.bld-adjust-grid > label:not(.bld-check) { display: grid; grid-template-columns: 70px 1fr 52px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.bld-adjust-grid output { font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
+.bld-adjust-grid .btn { justify-self: start; }

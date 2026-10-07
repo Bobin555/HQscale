@@ -1,5 +1,5 @@
 import { PanoViewer, angularDistance } from './viewer.js';
-import { paintPlaceholder, sprite } from './placeholder.js';
+import { paintPlaceholder, propElement, sameMoment } from './placeholder.js';
 import { validateScenario } from './validate.js';
 import { startBuilder } from './builder.js';
 
@@ -164,7 +164,7 @@ async function goToStep(i) {
   ui.progress.style.width = `${(i / steps.length) * 100}%`;
   ui.stepCount.textContent = `${i + 1} / ${steps.length}`;
   await showScene(step.scene);
-  showSceneProps(step.scene);
+  showSceneProps(step);
   // A 360 video moves, so steps can freeze it on the moment their hotspots were placed on.
   if (currentScenario.scenes[step.scene].media.type === 'video') {
     const frozen = typeof step.videoTime === 'number';
@@ -178,17 +178,18 @@ async function goToStep(i) {
   });
 }
 
-/** Pictures placed into the scene from the hazard library (e.g. a wet-floor sign or a cone). */
-function showSceneProps(sceneId) {
-  for (const s of currentScenario.steps.filter((x) => x.scene === sceneId)) {
+/**
+ * Pictures placed into the scene from the hazard library (e.g. a wet-floor sign or a cone).
+ * On a 360 video they only fit the frame they were placed on, so they're shown only while the
+ * video is frozen on that moment, never over moving footage.
+ */
+function showSceneProps(step) {
+  const isVideo = currentScenario.scenes[step.scene].media.type === 'video';
+  for (const s of currentScenario.steps.filter((x) => x.scene === step.scene)) {
+    if (isVideo && !sameMoment(s.videoTime, step.videoTime)) continue;
     for (const p of [...(s.targets || []), ...(s.hotspots || [])]) {
-      const spr = p.prop?.kind && sprite(p.prop.kind, p.prop.opts, p.prop.scale ?? 1);
-      if (!spr) continue;
-      const el = document.createElement('img');
-      el.className = 'scene-prop';
-      el.src = spr.url;
-      el.alt = '';
-      viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: spr.size, under: true });
+      const pe = p.prop?.kind && propElement(p.prop);
+      if (pe) viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el: pe.el, size: pe.size, under: true });
     }
   }
 }

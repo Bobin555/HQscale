@@ -73,6 +73,9 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
      drag one onto the view, or tap it and then tap the view. Its description, risk level and "how to check" list
      are filled in for you. Items marked 🖼 also put a picture of the hazard into the scene (a spill, cone, overloaded
      socket, ladder…), so you can stage hazards that aren't in your footage. Edit the list in `js/hazards.js`.
+   - **Adjust a picture** by dragging it in the 360° view (corner handle = resize, top handle = rotate), or with
+     **Adjust picture** in its card: size, rotation, width, **lie flat** (for things on the floor) and mirror.
+     On a 360° video, pictures only appear on the frozen moment they were placed on, never over moving footage.
    - **360° videos:** each step freezes the video on one moment, so markers stay on the thing they point at.
      Use the timeline at the bottom of the view to pick the moment, then **Use this moment**. Messages and
      questions can keep the video playing instead.
