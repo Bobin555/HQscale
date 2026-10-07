@@ -1,5 +1,5 @@
 import { PanoViewer, angularDistance } from './viewer.js';
-import { paintPlaceholder } from './placeholder.js';
+import { paintPlaceholder, sprite } from './placeholder.js';
 import { validateScenario } from './validate.js';
 import { startBuilder } from './builder.js';
 
@@ -164,11 +164,33 @@ async function goToStep(i) {
   ui.progress.style.width = `${(i / steps.length) * 100}%`;
   ui.stepCount.textContent = `${i + 1} / ${steps.length}`;
   await showScene(step.scene);
+  showSceneProps(step.scene);
+  // A 360 video moves, so steps can freeze it on the moment their hotspots were placed on.
+  if (currentScenario.scenes[step.scene].media.type === 'video') {
+    const frozen = typeof step.videoTime === 'number';
+    if (frozen) await viewer.seekVideo(step.videoTime); else viewer.playVideo();
+    ui.btnVideo.hidden = frozen;
+  }
   const handler = STEP_TYPES[step.type];
   if (!handler) { toast(`Unknown step type "${step.type}" — skipping`, 'bad'); return goToStep(i + 1); }
   handler(step, (result) => {
     if (result) run.results.push({ step: i, type: step.type, title: step.title || step.question || step.prompt, ...result });
   });
+}
+
+/** Pictures placed into the scene from the hazard library (e.g. a wet-floor sign or a cone). */
+function showSceneProps(sceneId) {
+  for (const s of currentScenario.steps.filter((x) => x.scene === sceneId)) {
+    for (const p of [...(s.targets || []), ...(s.hotspots || [])]) {
+      const spr = p.prop?.kind && sprite(p.prop.kind, p.prop.opts, p.prop.scale ?? 1);
+      if (!spr) continue;
+      const el = document.createElement('img');
+      el.className = 'scene-prop';
+      el.src = spr.url;
+      el.alt = '';
+      viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: spr.size, under: true });
+    }
+  }
 }
 
 const next = () => goToStep(run.index + 1);

@@ -345,4 +345,184 @@ const DRAWERS = {
     g.strokeRect(-12 * k, -7 * k, 24 * k, 14 * k);
     if (o.text) String(o.text).split('\n').forEach((l, i) => text(g, l, 0, (-4 + i * 2.6) * k, 1.8 * k, '#1a237e', 600));
   },
+
+  cone(g, k) {
+    g.fillStyle = '#ff6d00';
+    g.beginPath();
+    g.moveTo(0, -5 * k);
+    g.lineTo(2.2 * k, 3 * k);
+    g.lineTo(-2.2 * k, 3 * k);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#fff';
+    g.fillRect(-1.25 * k, -1.4 * k, 2.5 * k, 0.9 * k);
+    g.fillRect(-1.8 * k, 0.8 * k, 3.6 * k, 0.9 * k);
+    g.fillStyle = '#e65100';
+    g.fillRect(-3 * k, 3 * k, 6 * k, 1 * k);
+  },
+
+  ladder(g, k) {
+    g.strokeStyle = '#b0bec5';
+    g.lineCap = 'round';
+    g.lineWidth = 0.7 * k;
+    line(g, -3 * k, 14 * k, -1 * k, -14 * k);
+    line(g, 3 * k, 14 * k, 1 * k, -14 * k);
+    g.lineWidth = 0.45 * k;
+    for (let i = 0; i < 9; i++) {
+      const y = -12 + i * 3, hw = 1 + 2 * ((y + 14) / 28);
+      line(g, -hw * k, y * k, hw * k, y * k);
+    }
+  },
+
+  socket(g, k) {
+    g.strokeStyle = '#212121';
+    g.lineWidth = 0.4 * k;
+    g.beginPath();
+    g.moveTo(-7 * k, 0);
+    g.quadraticCurveTo(-9 * k, 3 * k, -6 * k, 5.5 * k);
+    g.stroke();
+    g.fillStyle = '#eceff1';
+    roundRect(g, -7 * k, -1.5 * k, 14 * k, 3 * k, 0.6 * k);
+    g.fill();
+    const cols = ['#212121', '#424242', '#fafafa', '#212121'];
+    cols.forEach((c, i) => {
+      const x = (-5.2 + i * 3.4) * k;
+      g.strokeStyle = c === '#fafafa' ? '#9e9e9e' : c;
+      g.lineWidth = 0.4 * k;
+      g.beginPath();
+      g.moveTo(x, -3.5 * k);
+      g.quadraticCurveTo(x + (i - 1.5) * 1.5 * k, -6 * k, x + (i - 1.5) * 3 * k, -4.5 * k);
+      g.stroke();
+      g.fillStyle = c;
+      g.fillRect(x - 1 * k, -3.5 * k, 2 * k, 2.2 * k);
+    });
+    g.fillStyle = '#ff5252';
+    g.beginPath();
+    g.arc(6 * k, 0, 0.5 * k, 0, Math.PI * 2);
+    g.fill();
+  },
+
+  drum(g, k) {
+    g.fillStyle = '#1565c0';
+    roundRect(g, -4 * k, -6 * k, 8 * k, 12 * k, 1 * k);
+    g.fill();
+    g.fillStyle = '#0d47a1';
+    for (const y of [-3, 2]) g.fillRect(-4 * k, y * k, 8 * k, 0.6 * k);
+    g.save();
+    g.rotate(Math.PI / 4);
+    g.fillStyle = '#fff';
+    g.fillRect(-1.6 * k, -1.6 * k, 3.2 * k, 3.2 * k);
+    g.strokeStyle = '#d32f2f';
+    g.lineWidth = 0.35 * k;
+    g.strokeRect(-1.6 * k, -1.6 * k, 3.2 * k, 3.2 * k);
+    g.restore();
+    text(g, '!', 0, 0.1 * k, 2 * k, '#111');
+  },
+
+  tape(g, k) {
+    g.fillStyle = '#455a64';
+    g.fillRect(-10 * k, -4 * k, 1 * k, 10 * k);
+    g.fillRect(9 * k, -4 * k, 1 * k, 10 * k);
+    const stripe = (x0, y0, x1, y1) => {
+      g.save();
+      g.translate(x0 * k, y0 * k);
+      g.rotate(Math.atan2(y1 - y0, x1 - x0));
+      const len = Math.hypot(x1 - x0, y1 - y0) * k;
+      for (let x = 0, n = 0; x < len; x += 1.4 * k, n++) {
+        g.fillStyle = n % 2 ? '#fff' : '#e53935';
+        g.fillRect(x, -0.5 * k, Math.min(1.4 * k, len - x), 1 * k);
+      }
+      g.restore();
+    };
+    stripe(-9, -3, -2, 1);
+    stripe(9, -3, 3, 4);
+  },
+
+  hardhat(g, k) {
+    g.fillStyle = '#fbc02d';
+    g.beginPath();
+    g.ellipse(0, 0, 3.2 * k, 3 * k, 0, Math.PI, 0);
+    g.fill();
+    g.fillRect(-4.2 * k, -0.2 * k, 8.4 * k, 1 * k);
+    g.fillStyle = '#f9a825';
+    g.fillRect(-0.4 * k, -3 * k, 0.8 * k, 3 * k);
+  },
+
+  wires(g, k) {
+    g.fillStyle = '#78909c';
+    g.fillRect(-3 * k, -3 * k, 6 * k, 5 * k);
+    g.fillStyle = '#37474f';
+    g.fillRect(-2.2 * k, -2.2 * k, 4.4 * k, 3.4 * k);
+    ['#d32f2f', '#1976d2', '#fbc02d'].forEach((c, i) => {
+      g.strokeStyle = c;
+      g.lineWidth = 0.45 * k;
+      g.beginPath();
+      g.moveTo((i - 1) * k, 0);
+      g.bezierCurveTo((i * 2 - 2) * k, 3 * k, (i - 1) * 3 * k, 4 * k, (i * 2 - 2) * k, 6 * k);
+      g.stroke();
+    });
+    g.fillStyle = '#ffeb3b';
+    g.beginPath();
+    for (let a = 0; a < 10; a++) {
+      const r = (a % 2 ? 0.6 : 1.6) * k;
+      g.lineTo(3.5 * k + Math.cos((a * Math.PI) / 5) * r, -3 * k + Math.sin((a * Math.PI) / 5) * r);
+    }
+    g.closePath();
+    g.fill();
+  },
+
+  hole(g, k) {
+    g.fillStyle = '#5d4037';
+    g.beginPath();
+    g.ellipse(0, 0, 9 * k, 3 * k, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#1b0f0a';
+    g.beginPath();
+    g.ellipse(0, 0.3 * k, 7.5 * k, 2.2 * k, 0, 0, Math.PI * 2);
+    g.fill();
+  },
 };
+
+// ---------- pictures that can be placed into any scene (hazard library) ----------
+
+// Bounds of each drawing around its origin, in degrees: [left, right, top, bottom].
+const SPRITE_BOUNDS = {
+  wetfloor: [-4, 4, -6.5, 6.5], puddle: [-9.5, 9.5, -2.5, 2.5], cable: [-11, 11, -2.2, 2.2], boxes: [-8.5, 8.5, -11, 4],
+  extinguisher: [-1.6, 2.6, -5.8, 8], firstaid: [-4.2, 4.2, -3.7, 3.7], person: [-4.6, 4.6, -13.5, 24.2],
+  workstation: [-10.2, 10.2, -6.2, 12.7], cone: [-3.2, 3.2, -5.2, 4.2], ladder: [-3.6, 3.6, -14.6, 14.6],
+  socket: [-9.5, 8.5, -6.8, 6], drum: [-4.3, 4.3, -6.3, 6.3], tape: [-10.2, 10.2, -4.2, 6.2], hardhat: [-4.4, 4.4, -3.2, 1],
+  wires: [-3.2, 5.4, -4.8, 6.2], hole: [-9.2, 9.2, -3.2, 3.2],
+};
+
+/** Friendly names for the pictures, in menu order. */
+export const SPRITES = {
+  puddle: 'Spill / puddle', wetfloor: 'Wet floor sign', cable: 'Trailing cable', boxes: 'Boxes / obstruction',
+  socket: 'Overloaded socket', wires: 'Exposed wiring', extinguisher: 'Fire extinguisher', firstaid: 'First aid kit',
+  cone: 'Traffic cone', tape: 'Broken barrier', ladder: 'Ladder', hole: 'Open excavation', hardhat: 'Hard hat',
+  drum: 'Chemical drum', person: 'Person', workstation: 'Desk & screen',
+};
+
+const spriteCache = new Map();
+
+/**
+ * Draws one picture and returns { url, size: [widthDeg, heightDeg] }. `opts` are the drawer's
+ * options (e.g. { lanyard: '#e53935' } for a person), `scale` makes it bigger or smaller.
+ */
+export function sprite(kind, opts = {}, scale = 1) {
+  const b = SPRITE_BOUNDS[kind];
+  if (!b || !DRAWERS[kind]) return null;
+  const key = `${kind}|${JSON.stringify(opts)}`;
+  let url = spriteCache.get(key);
+  if (!url) {
+    const k = 16; // pixels per degree: sharp when zoomed in, small enough to stay light
+    const c = document.createElement('canvas');
+    c.width = Math.ceil((b[1] - b[0]) * k);
+    c.height = Math.ceil((b[3] - b[2]) * k);
+    const g = c.getContext('2d');
+    g.translate(-b[0] * k, -b[2] * k);
+    DRAWERS[kind](g, k, { width: 20, ...opts }, THEMES.office);
+    url = c.toDataURL('image/png');
+    spriteCache.set(key, url);
+  }
+  return { url, size: [(b[1] - b[0]) * scale, (b[3] - b[2]) * scale] };
+}

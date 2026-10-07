@@ -29,6 +29,7 @@ export function validateScenario(s) {
   (s.steps || []).forEach((st, i) => {
     const where = `step ${i + 1}${st?.title ? ` ("${st.title}")` : ''}`;
     if (!VALID_STEP_TYPES.includes(st?.type)) { add(where, `"type" must be one of ${VALID_STEP_TYPES.join(', ')}`); return; }
+    if (st.videoTime != null && !(typeof st.videoTime === 'number' && st.videoTime >= 0)) add(where, '"videoTime" must be a number of seconds, 0 or more');
     if (!s.scenes?.[st.scene]) add(where, `unknown scene "${st.scene}"`);
     if (st.type === 'info' && !st.title && !st.body) add(where, 'info step needs a "title" or "body"');
     if (st.type === 'find') {

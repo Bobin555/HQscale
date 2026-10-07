@@ -69,6 +69,13 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
    - Add steps: **⚠ Hazard spots** (markers with a description, risk level and "how to check" list),
      **🎯 Find task** (learners tap the right thing), **❓ Question** (multiple choice) or **💬 Message**.
    - For hazard spots and find tasks, **tap the 360° view** where the thing is. Use **Move** to reposition it.
+   - Or use the **📚 Hazard library** (24 common office, fire, site, warehouse, electrical and security hazards):
+     drag one onto the view, or tap it and then tap the view. Its description, risk level and "how to check" list
+     are filled in for you. Items marked 🖼 also put a picture of the hazard into the scene (a spill, cone, overloaded
+     socket, ladder…), so you can stage hazards that aren't in your footage. Edit the list in `js/hazards.js`.
+   - **360° videos:** each step freezes the video on one moment, so markers stay on the thing they point at.
+     Use the timeline at the bottom of the view to pick the moment, then **Use this moment**. Messages and
+     questions can keep the video playing instead.
    - **▶ Preview** plays the module exactly as learners will see it.
    - **Save** gives you the module file. Upload it to `scenarios/` and the photos/videos to `media/<module-id>/`,
      then add the module to `scenarios/index.json`.
@@ -168,6 +175,7 @@ js/viewer.js            WebGL 360° viewer: image/video, drag/pinch/keys/gyro, p
 js/placeholder.js       draws stand-in rooms until real footage exists
 js/main.js              module runner (steps, scoring, results)
 js/builder.js           module builder (#author)
+js/hazards.js           hazard library used by the builder
 js/validate.js          module checks, shared by the app and npm run validate
 scenarios/*.json        training content
 media/                  your 360° photos / videos

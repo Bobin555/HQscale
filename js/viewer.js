@@ -79,6 +79,7 @@ export class PanoViewer {
     this.tapHandlers = new Set();
     this.viewHandlers = new Set();
     this.video = null;
+    this.wantsPlaying = false; // false while a video is deliberately frozen on a frame
     this.dirty = true;
     this.velocity = { yaw: 0, pitch: 0 };
     this.anim = null;
@@ -221,7 +222,8 @@ export class PanoViewer {
 
     if (media.type === 'video') {
       this.#setTexParams(false);
-      await this.video.play().catch(() => {}); // autoplay may need a user gesture; resumed on next tap
+      this.wantsPlaying = media.autoplay !== false;
+      if (this.wantsPlaying) await this.video.play().catch(() => {}); // autoplay may need a user gesture; resumed on next tap
     } else {
       this.#uploadStatic(source, w, h);
     }
@@ -239,9 +241,41 @@ export class PanoViewer {
   }
 
   get isVideoPaused() { return !this.video || this.video.paused; }
+  get videoTime() { return this.video ? this.video.currentTime : 0; }
+  get videoDuration() { return this.video && Number.isFinite(this.video.duration) ? this.video.duration : 0; }
+
   toggleVideo() {
     if (!this.video) return;
-    if (this.video.paused) this.video.play(); else this.video.pause();
+    if (this.video.paused) this.playVideo(); else this.pauseVideo();
+  }
+
+  playVideo() {
+    if (!this.video) return;
+    this.wantsPlaying = true;
+    this.video.play().catch(() => {});
+  }
+
+  pauseVideo() {
+    if (!this.video) return;
+    this.wantsPlaying = false;
+    this.video.pause();
+    this.dirty = true;
+  }
+
+  /** Freezes the video on the frame at `seconds`, so hotspots line up with what's shown. */
+  async seekVideo(seconds) {
+    const v = this.video;
+    if (!v) return;
+    this.pauseVideo();
+    const t = Math.max(0, Math.min(seconds, (this.videoDuration || seconds) - 0.05));
+    if (Math.abs(v.currentTime - t) < 0.01 && v.readyState >= 2) { this.dirty = true; return; }
+    await new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); v.removeEventListener('seeked', done); resolve(); };
+      const timer = setTimeout(done, 3000);
+      v.addEventListener('seeked', done);
+      v.currentTime = t;
+    });
+    this.dirty = true;
   }
 
   // ---------- camera ----------
@@ -308,10 +342,11 @@ export class PanoViewer {
 
   // ---------- markers (DOM elements pinned to a yaw/pitch) ----------
 
-  addMarker({ yaw, pitch, el }) {
-    const m = { yaw, pitch, el };
+  /** Pins a DOM element to a direction. `size` = [width, height] in degrees (optional). `under` puts it below other markers. */
+  addMarker({ yaw, pitch, el, size, under = false }) {
+    const m = { yaw, pitch, el, size };
     el.classList.add('pano-marker');
-    this.overlay.append(el);
+    if (under) this.overlay.prepend(el); else this.overlay.append(el);
     this.markers.push(m);
     this.dirty = true;
     return m;
@@ -328,11 +363,17 @@ export class PanoViewer {
   }
 
   #updateMarkers() {
+    const pxPerDeg = this.height / this.fov;
     for (const m of this.markers) {
       const p = this.yawPitchToScreen(m.yaw, m.pitch);
       if (!p) { m.el.style.visibility = 'hidden'; continue; }
       m.el.style.visibility = 'visible';
       m.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+      if (m.size) {
+        // Keeps a fixed angular size (degrees), so it grows and shrinks with zoom like the scene does.
+        const w = m.size[0] * pxPerDeg, h = m.size[1] * pxPerDeg;
+        Object.assign(m.el.style, { width: `${w}px`, height: `${h}px`, marginLeft: `${-w / 2}px`, marginTop: `${-h / 2}px` });
+      }
     }
   }
 
@@ -389,7 +430,7 @@ export class PanoViewer {
       const isTap = drag.moved < 8 && performance.now() - drag.t0 < 600;
       if (isTap) {
         this.velocity = { yaw: 0, pitch: 0 };
-        if (this.video?.paused) this.video.play().catch(() => {});
+        if (this.video?.paused && this.wantsPlaying) this.video.play().catch(() => {}); // autoplay was blocked
         const yp = this.screenToYawPitch(e.clientX, e.clientY);
         const rect = this.container.getBoundingClientRect();
         this.tapHandlers.forEach((fn) => fn({ ...yp, x: e.clientX - rect.left, y: e.clientY - rect.top }));

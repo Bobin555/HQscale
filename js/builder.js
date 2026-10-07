@@ -6,6 +6,8 @@
 // ("media/<module-id>/<file>"); while building, they're shown from a local blob URL.
 
 import { validateScenario } from './validate.js';
+import { sprite, SPRITES } from './placeholder.js';
+import { HAZARDS, HAZARD_CATEGORIES } from './hazards.js';
 
 const DRAFT_KEY = 'hqscale.builder.draft';
 const STEP_INFO = {
@@ -16,6 +18,7 @@ const STEP_INFO = {
 };
 const RISKS = ['high', 'medium', 'low', 'info'];
 
+const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const slug = (s) => String(s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -27,6 +30,9 @@ export function startBuilder(api) {
   let editing = null; // index of the step being edited
   let moving = null; // index of the point waiting to be moved by the next tap
   let markers = [];
+  let libCat = HAZARD_CATEGORIES[0];
+  let libQuery = '';
+  let armed = null; // hazard picked from the library, placed by the next tap on the view
 
   document.body.classList.add('has-builder');
   const panel = document.createElement('aside');
@@ -36,6 +42,10 @@ export function startBuilder(api) {
   const fileInput = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*,video/*', hidden: true });
   const jsonInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json', hidden: true });
   document.body.append(fileInput, jsonInput);
+  const vbar = document.createElement('div');
+  vbar.className = 'bld-vbar';
+  vbar.hidden = true;
+  document.body.append(vbar);
   let pendingFileScene = null; // scene id to attach the next picked file to (null = new scene)
 
   // ------------------------------------------------------------ state helpers
@@ -84,12 +94,68 @@ export function startBuilder(api) {
     sceneId = id;
     if (!id) return;
     const sc = playable().scenes[id];
+    sc.media.autoplay = false; // videos stay paused while building so markers line up
     const info = await loadScene({ scenes: { [id]: sc } }, id);
+    const st = step();
+    if (st?.scene === id && typeof st.videoTime === 'number') await viewer.seekVideo(st.videoTime);
     const missing = !info && (draft.scenes[id].media.file && !localUrls[id]);
     if (missing) toast(`Open "${draft.scenes[id].media.file}" again to see this scene (files aren't kept after the page is closed).`, 'bad', 6000);
     else if (info?.warnings?.length) toast(info.warnings[0], 'bad', 7000);
     drawMarkers();
+    renderVideoBar();
   }
+
+  const isVideoScene = (id = sceneId) => draft.scenes[id]?.media.type === 'video';
+
+  // ------------------------------------------------------------ video timeline
+  // A 360 video moves, so each step shows the video frozen on one moment. Markers are placed
+  // on that frame and learners see exactly the same frame.
+
+  function renderVideoBar() {
+    const show = !panel.hidden && isVideoScene() && viewer.video;
+    vbar.hidden = !show;
+    if (!show) return;
+    const st = step();
+    const dur = viewer.videoDuration;
+    const t = viewer.videoTime;
+    const onStep = st && st.scene === sceneId;
+    const frozen = onStep && typeof st.videoTime === 'number';
+    const matches = frozen && Math.abs(st.videoTime - t) < 0.05;
+    vbar.innerHTML = `
+      <button class="btn secondary small" data-v="play" aria-label="${viewer.isVideoPaused ? 'Play' : 'Pause'}">${viewer.isVideoPaused ? '▶' : '❚❚'}</button>
+      <input type="range" min="0" max="${dur.toFixed(2)}" step="0.05" value="${t.toFixed(2)}" data-v="seek" aria-label="Video position">
+      <span class="bld-vtime">${fmtTime(t)} / ${fmtTime(dur)}</span>
+      ${onStep ? (matches
+        ? `<span class="bld-vstat ok">📌 Step ${editing + 1} shows this moment</span>`
+        : `<button class="btn small" data-v="use">📌 Use this moment for step ${editing + 1}</button>${frozen ? `<button class="btn secondary small" data-v="goto">Back to ${fmtTime(st.videoTime)}</button>` : ''}`) : ''}`;
+  }
+  vbar.addEventListener('input', (e) => {
+    if (e.target.dataset.v !== 'seek') return;
+    viewer.seekVideo(Number(e.target.value)).then(() => { vbar.querySelector('.bld-vtime').textContent = `${fmtTime(viewer.videoTime)} / ${fmtTime(viewer.videoDuration)}`; });
+  });
+  vbar.addEventListener('change', (e) => { if (e.target.dataset.v === 'seek') renderVideoBar(); });
+  vbar.addEventListener('click', async (e) => {
+    const v = e.target.closest('[data-v]')?.dataset.v;
+    const st = step();
+    if (v === 'play') { viewer.toggleVideo(); renderVideoBar(); }
+    if (v === 'use' && st) {
+      viewer.pauseVideo();
+      st.videoTime = Math.round(viewer.videoTime * 100) / 100;
+      save();
+      toast(`Step ${editing + 1} will show the video at ${fmtTime(st.videoTime)}`, 'good');
+      render();
+      renderVideoBar();
+    }
+    if (v === 'goto' && st) { await viewer.seekVideo(st.videoTime); renderVideoBar(); }
+  });
+  // Keep the time readout moving while the video plays.
+  setInterval(() => {
+    if (vbar.hidden || viewer.isVideoPaused) return;
+    const r = vbar.querySelector('[data-v="seek"]');
+    if (r && document.activeElement !== r) r.value = viewer.videoTime;
+    const tm = vbar.querySelector('.bld-vtime');
+    if (tm) tm.textContent = `${fmtTime(viewer.videoTime)} / ${fmtTime(viewer.videoDuration)}`;
+  }, 250);
 
   async function addMediaFile(file) {
     const ext = file.name.split('.').pop().toLowerCase();
@@ -138,6 +204,18 @@ export function startBuilder(api) {
   function drawMarkers() {
     markers.forEach((m) => viewer.removeMarker(m));
     markers = [];
+    // Pictures placed in the scene (they belong to the environment, so all are shown).
+    for (const s of draft.steps.filter((x) => x.scene === sceneId)) {
+      for (const p of points(s) || []) {
+        const spr = p.prop?.kind && sprite(p.prop.kind, p.prop.opts, p.prop.scale ?? 1);
+        if (!spr) continue;
+        const el = document.createElement('img');
+        el.className = 'scene-prop';
+        el.src = spr.url;
+        el.alt = '';
+        markers.push(viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: spr.size, under: true }));
+      }
+    }
     const st = step();
     const list = st ? [[st, editing]] : draft.steps.map((s, i) => [s, i]).filter(([s]) => s.scene === sceneId);
     for (const [s, si] of list) {
@@ -145,29 +223,20 @@ export function startBuilder(api) {
         const el = document.createElement('div');
         const isFind = s.type === 'find';
         el.className = `bld-point ${isFind ? 'find' : `hz ${p.icon || 'hazard'}`}${st ? '' : ' faded'}${moving === pi && st ? ' moving' : ''}`;
-        el.dataset.r = isFind ? (p.radius ?? 8) : 0;
         const label = isFind ? p.label : p.title;
         el.innerHTML = `${isFind ? '' : `<span class="dot">${{ hazard: '⚠', check: '✓', info: 'i' }[p.icon || 'hazard']}</span>`}<span class="tag">${pi + 1}. ${esc(label || (isFind ? 'Target' : 'Hazard'))}</span>`;
         el.onclick = () => { if (!st) editStep(si); else panel.querySelector(`[data-point="${pi}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
-        markers.push(viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el }));
+        const r = p.radius ?? 8;
+        markers.push(viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el, size: isFind ? [2 * r, 2 * r] : undefined }));
       });
     }
-    sizeMarkers();
   }
-  function sizeMarkers() {
-    const pxPerDeg = viewer.height / viewer.fov;
-    for (const m of markers) {
-      const r = Number(m.el.dataset.r);
-      if (!r) continue;
-      const d = 2 * r * pxPerDeg;
-      Object.assign(m.el.style, { width: `${d}px`, height: `${d}px`, marginLeft: `${-d / 2}px`, marginTop: `${-d / 2}px` });
-    }
-  }
-  viewer.onViewChange(sizeMarkers);
+
 
   viewer.onTap(({ yaw, pitch }) => {
     if (panel.hidden) return;
     const p = { yaw: Math.round(yaw), pitch: Math.round(pitch) };
+    if (armed) { const h = armed; armed = null; placeHazard(h, p); return; }
     const st = step();
     const list = points(st);
     if (!list) {
@@ -175,6 +244,7 @@ export function startBuilder(api) {
       return;
     }
     if (st.scene !== sceneId) { toast('This step belongs to another scene.', 'bad'); return; }
+    freezeStepMoment(st);
     if (moving != null && list[moving]) {
       Object.assign(list[moving], p);
       moving = null;
@@ -191,6 +261,98 @@ export function startBuilder(api) {
     panel.querySelector(`[data-point="${focusIdx}"] input`)?.focus({ preventScroll: false });
   });
 
+  /** On a video scene, a step's markers belong to the frame on screen: pause and remember it. */
+  function freezeStepMoment(st) {
+    if (!isVideoScene(st.scene) || !viewer.video) return;
+    viewer.pauseVideo();
+    if (typeof st.videoTime !== 'number') st.videoTime = Math.round(viewer.videoTime * 100) / 100;
+    renderVideoBar();
+  }
+
+  // ------------------------------------------------------------ hazard library
+
+  /** Adds a library hazard at a spot: to the step being edited, or to a "Hazard spots" step. */
+  function placeHazard(h, at) {
+    if (!sceneId) { toast('Add a 360° photo or video first.', 'bad'); return; }
+    let st = step();
+    if (!st || !points(st) || st.scene !== sceneId) {
+      const idx = draft.steps.findLastIndex((x) => x.type === 'explore' && x.scene === sceneId);
+      if (idx >= 0) editing = idx;
+      else {
+        draft.steps.push({ type: 'explore', scene: sceneId, title: 'Hazards in this area', prompt: 'Tap each marker to learn what to look for and how to check it.', hotspots: [], requireAll: true });
+        editing = draft.steps.length - 1;
+      }
+      st = step();
+    }
+    freezeStepMoment(st);
+    const prop = h.sprite ? { kind: h.sprite.kind, ...(h.sprite.opts ? { opts: h.sprite.opts } : {}), scale: 1 } : undefined;
+    const list = points(st);
+    if (st.type === 'find') {
+      const spr = prop && sprite(prop.kind, prop.opts);
+      const radius = spr ? Math.round(Math.min(20, Math.max(5, Math.max(...spr.size) / 2 + 1))) : 8;
+      list.push({ ...at, radius, label: h.name, ...(prop ? { prop } : {}) });
+      if (!st.title) st.title = `Find the ${h.name.toLowerCase()}`;
+      if (!st.prompt) st.prompt = `Look around and tap on the ${h.name.toLowerCase()}.`;
+    } else {
+      list.push({ ...at, icon: h.type === 'check' ? 'check' : 'hazard', risk: h.risk, title: h.name, body: h.body, checklist: [...h.checklist], ...(prop ? { prop } : {}) });
+    }
+    moving = null;
+    save();
+    render();
+    drawMarkers();
+    toast(`${h.name} added${prop ? ' with a picture in the scene' : ''}. Edit the details if you need to.`, 'good');
+    panel.querySelector(`[data-point="${list.length - 1}"]`)?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function libraryItems() {
+    const q = libQuery.trim().toLowerCase();
+    return HAZARDS.filter((h) => (q ? `${h.name} ${h.body} ${h.cat}`.toLowerCase().includes(q) : h.cat === libCat));
+  }
+  function renderLibraryGrid() {
+    const items = libraryItems();
+    return items.length ? items.map((h) => `
+      <button class="bld-lib-item ${armed?.id === h.id ? 'armed' : ''}" draggable="true" data-hz="${h.id}" title="${esc(h.body)}">
+        <span class="i">${h.icon}</span><span class="n">${esc(h.name)}</span>${h.sprite ? '<span class="pic" title="Adds a picture to the scene">🖼</span>' : ''}
+      </button>`).join('') : '<p class="bld-muted">No matches.</p>';
+  }
+  function renderLibrary() {
+    return `<details class="bld-lib" ${libraryOpen ? 'open' : ''}>
+      <summary><strong>📚 Hazard library</strong> <em>drag onto the 360° view</em></summary>
+      <p class="bld-muted small">Drag a hazard onto the scene, or tap one and then tap the scene. 🖼 = also puts a picture of it in the scene.</p>
+      <div class="bld-lib-filters">
+        <input type="search" data-lib="q" value="${esc(libQuery)}" placeholder="Search hazards" aria-label="Search hazards">
+        <select data-lib="cat" aria-label="Category">${HAZARD_CATEGORIES.map((c) => `<option ${c === libCat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+      </div>
+      <div class="bld-lib-grid">${renderLibraryGrid()}</div>
+    </details>`;
+  }
+  let libraryOpen = true;
+
+  // Drag and drop from the library onto the 360° view.
+  const stage = viewer.container;
+  stage.addEventListener('dragover', (e) => {
+    if (panel.hidden || !e.dataTransfer.types.includes('text/plain')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    stage.classList.add('drop-target');
+  });
+  stage.addEventListener('dragleave', () => stage.classList.remove('drop-target'));
+  stage.addEventListener('drop', (e) => {
+    stage.classList.remove('drop-target');
+    const id = e.dataTransfer.getData('text/plain').replace(/^hqscale-hazard:/, '');
+    const h = HAZARDS.find((x) => x.id === id);
+    if (!h || panel.hidden) return;
+    e.preventDefault();
+    const yp = viewer.screenToYawPitch(e.clientX, e.clientY);
+    placeHazard(h, { yaw: Math.round(yp.yaw), pitch: Math.round(yp.pitch) });
+  });
+  panel.addEventListener('dragstart', (e) => {
+    const id = e.target.closest?.('[data-hz]')?.dataset.hz;
+    if (!id) return;
+    e.dataTransfer.setData('text/plain', `hqscale-hazard:${id}`);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+
   // ------------------------------------------------------------ steps
 
   function addStep(type) {
@@ -202,7 +364,8 @@ export function startBuilder(api) {
       quiz: { question: '', options: ['', '', '', ''], answer: 0, explain: '', shuffle: true },
       explore: { title: 'Hazards in this area', prompt: 'Tap each marker to learn what to look for and how to check it.', hotspots: [], requireAll: true },
     };
-    draft.steps.push({ ...base, ...defaults[type] });
+    const moment = isVideoScene() && viewer.video ? { videoTime: Math.round(viewer.videoTime * 100) / 100 } : {};
+    draft.steps.push({ ...base, ...defaults[type], ...moment });
     save();
     editStep(draft.steps.length - 1);
     if (type === 'find' || type === 'explore') toast('Now tap the view where the thing is');
@@ -214,7 +377,11 @@ export function startBuilder(api) {
     render();
     const st = step();
     if (st && st.scene !== sceneId) await showScene(st.scene);
-    else drawMarkers();
+    else {
+      if (st && typeof st.videoTime === 'number' && isVideoScene()) await viewer.seekVideo(st.videoTime);
+      drawMarkers();
+      renderVideoBar();
+    }
   }
 
   function moveStep(i, d) {
@@ -306,6 +473,7 @@ export function startBuilder(api) {
       <div class="bld-add">
         ${Object.entries(STEP_INFO).map(([t, s]) => `<button class="bld-add-btn" data-act="add" data-type="${t}" title="${esc(s.help)}" ${scenes.length ? '' : 'disabled'}><span>${s.icon}</span>${s.name}</button>`).join('')}
       </div>
+      ${scenes.length ? renderLibrary() : ''}
       ${problems.length ? `<div class="bld-problems"><strong>To fix before saving:</strong><ul>${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>` : draft.steps.length ? '<p class="bld-ok">✓ Module is ready to preview and save.</p>' : ''}`;
   }
 
@@ -358,8 +526,20 @@ export function startBuilder(api) {
         <span>${info.icon} <strong>${info.name}</strong> · step ${editing + 1} of ${draft.steps.length}</span>
       </div>
       ${sceneSelect(st)}
+      ${isVideoScene(st.scene) ? videoMomentField(st) : ''}
+      ${points(st) ? renderLibrary() : ''}
       ${body}
       <div class="bld-editor-foot"><button class="btn small" data-act="done">Done</button></div>`;
+  }
+
+  function videoMomentField(st) {
+    const canPlay = st.type === 'info' || st.type === 'quiz';
+    const frozen = typeof st.videoTime === 'number';
+    return `<div class="bld-moment"><span>🎞 ${frozen
+      ? `Video is paused at <strong>${fmtTime(st.videoTime)}</strong> during this step. Change it with the video timeline.`
+      : 'Video keeps playing during this step.'}</span>
+      ${canPlay ? `<label class="bld-check"><input type="checkbox" data-scope="step" data-f="keepPlaying" ${frozen ? '' : 'checked'}> Keep the video playing (no markers in this step)</label>` : ''}
+    </div>`;
   }
 
   function pointList(st) {
@@ -375,6 +555,12 @@ export function startBuilder(api) {
             <button class="btn secondary small" data-act="look" data-i="${i}" title="Turn the view to it">👁</button>
             <button class="btn secondary small" data-act="move" data-i="${i}" title="Tap the view to move it">${moving === i ? 'Tap view…' : 'Move'}</button>
             <button class="btn secondary small danger" data-act="del-point" data-i="${i}" aria-label="Remove">✕</button>
+          </div>
+          <div class="bld-row">
+            <label>Picture in the scene <select data-scope="prop" data-i="${i}" data-f="kind">
+              <option value="">None (it's already in the footage)</option>
+              ${Object.entries(SPRITES).map(([k, n]) => `<option value="${k}" ${p.prop?.kind === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+            ${p.prop?.kind ? `<label>Picture size <input type="range" min="0.3" max="3" step="0.1" data-scope="prop" data-i="${i}" data-f="scale" value="${p.prop.scale ?? 1}"></label>` : ''}
           </div>
           ${isFind ? `
             <label class="bld-range">Tap area <input type="range" min="3" max="25" data-scope="point" data-i="${i}" data-f="radius" value="${p.radius ?? 8}"> <span>${p.radius ?? 8}°</span></label>` : `
@@ -404,6 +590,13 @@ export function startBuilder(api) {
 
   panel.addEventListener('input', (e) => {
     const el = e.target;
+    if (el.dataset.lib) {
+      if (el.dataset.lib === 'q') libQuery = el.value; else { libCat = el.value; libQuery = ''; }
+      const grid = panel.querySelector('.bld-lib-grid');
+      if (grid) grid.innerHTML = renderLibraryGrid();
+      if (el.dataset.lib === 'cat') { const q = panel.querySelector('[data-lib="q"]'); if (q) q.value = ''; }
+      return;
+    }
     const scope = el.dataset.scope;
     if (!scope) return;
     const st = step();
@@ -411,10 +604,28 @@ export function startBuilder(api) {
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.type === 'number' || el.type === 'range' || el.type === 'radio') v = Number(v);
     if (scope === 'module') draft[f] = v;
-    else if (scope === 'scene') draft.scenes[sceneId][f] = v;
+    else if (scope === 'scene') {
+      // Update the scene's label in place: re-rendering here would swallow the next click.
+      draft.scenes[sceneId][f] = v;
+      const chip = panel.querySelector('.bld-scene.on .bld-scene-pick span:nth-child(2)');
+      if (chip) chip.textContent = v || sceneId;
+    }
     else if (scope === 'step') {
+      if (f === 'keepPlaying') {
+        if (v) { delete st.videoTime; viewer.playVideo(); } else { viewer.pauseVideo(); st.videoTime = Math.round(viewer.videoTime * 100) / 100; }
+        save(); render(); renderVideoBar(); return;
+      }
       st[f] = v;
-      if (f === 'scene') { showScene(v); }
+      if (f === 'scene') { delete st.videoTime; showScene(v); }
+    } else if (scope === 'prop') {
+      const p = points(st)[Number(el.dataset.i)];
+      if (f === 'kind') {
+        if (v) p.prop = { ...(p.prop?.kind === v ? p.prop : {}), kind: v, scale: p.prop?.scale ?? 1 };
+        else delete p.prop;
+        save(); render(); drawMarkers(); return;
+      }
+      p.prop.scale = v;
+      drawMarkers();
     } else if (scope === 'opt') st.options[Number(el.dataset.i)] = v;
     else if (scope === 'point') {
       const p = points(st)[Number(el.dataset.i)];
@@ -424,9 +635,20 @@ export function startBuilder(api) {
     }
     save();
   });
-  panel.addEventListener('change', (e) => { if (e.target.dataset.scope === 'module' || e.target.dataset.scope === 'scene') render(); });
 
+  panel.addEventListener('toggle', (e) => { if (e.target.classList?.contains('bld-lib')) libraryOpen = e.target.open; }, true);
   panel.addEventListener('click', async (e) => {
+    const hz = e.target.closest('[data-hz]');
+    if (hz) {
+      const h = HAZARDS.find((x) => x.id === hz.dataset.hz);
+      armed = armed?.id === h.id ? null : h;
+      panel.querySelectorAll('[data-hz]').forEach((b) => b.classList.toggle('armed', b.dataset.hz === armed?.id));
+      if (armed) {
+        toast(`Now tap the 360° view where the ${h.name.toLowerCase()} is`);
+        if (window.matchMedia('(max-width: 760px)').matches) panel.classList.add('collapsed');
+      }
+      return;
+    }
     const b = e.target.closest('[data-act]');
     if (!b || b.tagName === 'SELECT') return;
     const act = b.dataset.act;
@@ -457,7 +679,7 @@ export function startBuilder(api) {
       case 'up': moveStep(i, -1); break;
       case 'down': moveStep(i, 1); break;
       case 'del': confirmBox(`Delete "${stepTitle(draft.steps[i])}"?`, 'Delete', () => { draft.steps.splice(i, 1); save(); render(); drawMarkers(); }); break;
-      case 'done': editing = null; moving = null; render(); drawMarkers(); break;
+      case 'done': editing = null; moving = null; render(); drawMarkers(); renderVideoBar(); break;
       case 'add-opt': st.options.push(''); save(); render(); break;
       case 'look': viewer.lookAt(points(st)[i]); break;
       case 'move': moving = moving === i ? null : i; render(); drawMarkers(); if (moving != null) toast('Tap the view where it should go'); break;
@@ -483,6 +705,7 @@ export function startBuilder(api) {
     const problems = validateScenario(exportable());
     if (problems.length) { toast(`Fix ${problems.length} problem${problems.length === 1 ? '' : 's'} first (listed under the steps).`, 'bad', 5000); editing = null; render(); return; }
     panel.hidden = true;
+    vbar.hidden = true;
     document.body.classList.remove('has-builder');
     markers.forEach((m) => viewer.removeMarker(m));
     markers = [];
