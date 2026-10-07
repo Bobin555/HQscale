@@ -14,7 +14,7 @@ const fragment = args.includes('--fragment');
 const out = resolve(root, args.find((a) => !a.startsWith('--')) || 'dist/hqscale.html');
 
 // Modules are concatenated in dependency order, so imports/exports can be dropped.
-const js = ['js/viewer.js', 'js/placeholder.js', 'js/validate.js', 'js/main.js']
+const js = ['js/viewer.js', 'js/placeholder.js', 'js/validate.js', 'js/builder.js', 'js/main.js']
   .map((f) => read(f).replace(/^import .*$/gm, '').replace(/^export /gm, ''))
   .join('\n');
 

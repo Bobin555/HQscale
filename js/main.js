@@ -1,6 +1,7 @@
 import { PanoViewer, angularDistance } from './viewer.js';
 import { paintPlaceholder } from './placeholder.js';
 import { validateScenario } from './validate.js';
+import { startBuilder } from './builder.js';
 
 const $ = (sel) => document.querySelector(sel);
 const params = new URLSearchParams(location.search);
@@ -11,7 +12,7 @@ const ui = {
   stage: $('#stage'), topbar: $('#topbar'), banner: $('#banner'), card: $('#card'), restoreCard: $('#btn-restore-card'),
   home: $('#home'), results: $('#results'), resultsInner: $('#results-inner'), loading: $('#loading'), toast: $('#toast'),
   sceneTitle: $('#scene-title'), progress: $('#progress-fill'), stepCount: $('#step-count'), moduleList: $('#module-list'),
-  name: $('#learner-name'), author: $('#author'),
+  name: $('#learner-name'),
   btnExit: $('#btn-exit'), btnGyro: $('#btn-gyro'), btnFs: $('#btn-fullscreen'), btnVideo: $('#btn-video'),
 };
 
@@ -59,7 +60,8 @@ async function showScene(id, { force = false } = {}) {
 
 function preloadNext() {
   // Warm the browser cache for the next image-based scene so transitions feel instant.
-  const next = currentScenario?.steps.slice(run?.index ?? 0).map((s) => currentScenario.scenes[s.scene]).find((s) => s && s.media.type === 'image' && s !== currentScenario.scenes[currentSceneId]);
+  if (!run || !currentScenario?.steps) return; // nothing to preload outside a running module
+  const next = currentScenario.steps.slice(run.index).map((s) => currentScenario.scenes[s.scene]).find((s) => s && s.media.type === 'image' && s !== currentScenario.scenes[currentSceneId]);
   if (next) { const img = new Image(); img.src = next.media.src; }
 }
 
@@ -346,7 +348,7 @@ function finish() {
       <button class="btn" id="res-retry">Try again</button>
       <button class="btn secondary" id="res-csv">Download record (CSV)</button>
       <button class="btn secondary" id="res-copy">Copy results</button>
-      <button class="btn secondary" id="res-home">Back to modules</button>
+      <button class="btn secondary" id="res-home">${previewReturn ? 'Back to builder' : 'Back to modules'}</button>
     </div>`;
   ui.results.hidden = false;
   $('#res-retry').onclick = () => startScenario(s);
@@ -384,6 +386,12 @@ async function goHome() {
   hideCard();
   ui.topbar.hidden = true;
   ui.results.hidden = true;
+  if (previewReturn) {
+    const back = previewReturn;
+    previewReturn = null;
+    back();
+    return;
+  }
   ui.home.hidden = false;
 }
 
@@ -425,7 +433,7 @@ ui.btnExit.onclick = () => {
   const box = document.createElement('div');
   box.className = 'modal';
   box.innerHTML = `<div class="card modal-card" role="dialog" aria-modal="true" aria-labelledby="leave-title">
-    <h2 id="leave-title">Leave this module?</h2><p>Your progress will be lost.</p>
+    <h2 id="leave-title">${previewReturn ? 'Stop the preview?' : 'Leave this module?'}</h2><p>${previewReturn ? 'You will go back to the builder.' : 'Your progress will be lost.'}</p>
     <div class="card-actions"><button class="btn secondary" data-stay>Stay</button><button class="btn" data-leave>Leave</button></div></div>`;
   box.querySelector('[data-stay]').onclick = () => box.remove();
   box.querySelector('[data-leave]').onclick = () => { box.remove(); goHome(); };
@@ -445,130 +453,27 @@ ui.btnGyro.onclick = async () => {
 if (document.fullscreenEnabled) ui.btnFs.hidden = false;
 ui.btnFs.onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
 
-// ---------------------------------------------------------------- author mode
+// ---------------------------------------------------------------- module builder
 
-async function startAuthor() {
-  const file = params.get('scenario') || 'scenarios/hq-induction.json';
+// When the builder previews a module, leaving the module returns to the builder.
+let previewReturn = null;
+
+function openBuilder() {
   ui.home.hidden = true;
-  let scenario;
-  try {
-    scenario = await loadScenario(file);
-  } catch (err) {
-    toast(err.message, 'bad', 6000);
-    scenario = { scenes: {}, steps: [] };
-  }
-  currentScenario = scenario;
-  const picks = [];
-  const cross = document.createElement('div');
-  cross.className = 'crosshair';
-  document.body.append(cross);
-
-  ui.author.hidden = false;
-  ui.author.innerHTML = `
-    <div class="row">
-      <strong>Authoring</strong>
-      <select id="au-scene" aria-label="Scene">${Object.entries(scenario.scenes).map(([id, s]) => `<option value="${esc(id)}">${esc(s.title || id)}</option>`).join('')}</select>
-      <label class="btn secondary small">Open 360 photo/video…<input id="au-file" type="file" accept="image/*,video/*" hidden></label>
-      <button class="btn secondary small" id="au-exit">Exit</button>
-    </div>
-    <div class="row"><span class="readout" id="au-view"></span></div>
-    <div id="au-media" class="au-media" hidden></div>
-    <div class="muted" style="font-size:13px">Tap anywhere in the view to capture its yaw/pitch. Dashed circles show the targets and hotspots already defined for this scene.</div>
-    <pre id="au-out">[]</pre>
-    <div class="row"><button class="btn small" id="au-copy">Copy</button><button class="btn secondary small" id="au-clear">Clear</button></div>`;
-
-  $('#au-exit').onclick = () => {
-    if (params.has('author')) location.href = './';
-    else { history.replaceState(null, '', location.pathname + location.search); location.reload(); }
-  };
-  const out = $('#au-out');
-  const refresh = () => (out.textContent = picks.length ? `[\n${picks.map((p) => `  { "yaw": ${p.yaw}, "pitch": ${p.pitch}, "radius": 8, "label": "" }`).join(',\n')}\n]` : '[]');
-
-  const outlines = [];
-  const drawOutlines = (id) => {
-    outlines.forEach((m) => viewer.removeMarker(m));
-    outlines.length = 0;
-    scenario.steps.filter((s) => s.scene === id).forEach((s) => {
-      [...(s.targets || []), ...(s.hotspots || []).map((h) => ({ ...h, label: h.title, radius: h.radius ?? 6 }))].forEach((t) => {
-        const el = document.createElement('div');
-        el.className = 'target-outline';
-        el.innerHTML = `<span>${esc(t.label || '')}</span>`;
-        el.dataset.r = t.radius ?? 8;
-        outlines.push(viewer.addMarker({ yaw: t.yaw, pitch: t.pitch, el }));
-      });
-    });
-  };
-  // Keep outline sizes matched to the angular radius at the current zoom.
-  viewer.onViewChange(({ fov }) => {
-    $('#au-view').textContent = `view  yaw ${viewer.yaw.toFixed(1)}°  pitch ${viewer.pitch.toFixed(1)}°  fov ${fov.toFixed(0)}°`;
-    const pxPerDeg = viewer.height / fov;
-    outlines.forEach((m) => {
-      const d = 2 * m.el.dataset.r * pxPerDeg;
-      Object.assign(m.el.style, { width: `${d}px`, height: `${d}px`, marginLeft: `${-d / 2}px`, marginTop: `${-d / 2}px` });
-    });
+  startBuilder({
+    viewer, toast, esc,
+    loadScene: async (scenario, id) => {
+      currentScenario = scenario;
+      currentSceneId = null;
+      return showScene(id, { force: true });
+    },
+    preview: (scenario, onDone) => {
+      previewReturn = onDone;
+      startScenario(scenario);
+    },
+    listModules: async () => (await fetchJson('scenarios/index.json')).modules,
+    loadModule: (file) => fetchJson(file),
   });
-
-  const sceneSel = $('#au-scene');
-  const showMediaInfo = (info, name) => {
-    const box = $('#au-media');
-    box.hidden = !info;
-    if (!info) return;
-    box.className = `au-media${info.warnings.length ? ' warn' : ''}`;
-    box.innerHTML = `<strong>${esc(name)}</strong> · ${info.width}×${info.height} · shown as ${Math.round(info.hfov)}° × ${Math.round(info.vfov)}°`
-      + (info.warnings.length ? info.warnings.map((w) => `<p>⚠ ${esc(w)}</p>`).join('') : ' · <span class="ok">✓ looks like a proper 360° image</span>');
-  };
-  sceneSel.onchange = async () => {
-    const info = await showScene(sceneSel.value, { force: true });
-    drawOutlines(sceneSel.value);
-    const m = scenario.scenes[sceneSel.value].media;
-    showMediaInfo(m.type === 'placeholder' ? null : info, m.src);
-  };
-  if (sceneSel.value) sceneSel.onchange();
-
-  $('#au-file').onchange = async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    currentSceneId = null;
-    outlines.forEach((m) => viewer.removeMarker(m));
-    outlines.length = 0;
-    const ext = f.name.split('.').pop().toLowerCase();
-    const hints = {
-      insp: 'This is a raw Insta360 photo. Export it from Insta360 Studio or the Insta360 app as a 360° JPG first.',
-      insv: 'This is a raw Insta360 video. Export it from Insta360 Studio or the Insta360 app as a 360° MP4 first.',
-      '360': 'This is a raw GoPro 360 file. Export it from GoPro Player as a 360° MP4 first.',
-      heic: 'HEIC photos only open in Safari. Save the photo as JPG (on iPhone: Settings → Camera → Formats → Most Compatible).',
-    };
-    if (hints[ext]) { showMediaInfo(null); toast(hints[ext], 'bad', 8000); return; }
-    ui.loading.hidden = false;
-    try {
-      const info = await viewer.load({ type: f.type.startsWith('video') ? 'video' : 'image', src: URL.createObjectURL(f), name: f.name });
-      viewer.setView({ yaw: 0, pitch: 0, fov: 75 });
-      showMediaInfo(info, f.name);
-    } catch (err) {
-      showMediaInfo(null);
-      toast(err.message, 'bad', 6000);
-    } finally {
-      ui.loading.hidden = true;
-    }
-  };
-
-  viewer.onTap(({ yaw, pitch }) => {
-    const p = { yaw: Math.round(yaw), pitch: Math.round(pitch) };
-    picks.push(p);
-    const el = document.createElement('div');
-    el.className = 'pick';
-    viewer.addMarker({ ...p, el });
-    refresh();
-    toast(`yaw ${p.yaw}°, pitch ${p.pitch}°`);
-  });
-  $('#au-copy').onclick = async () => {
-    try { await navigator.clipboard.writeText(out.textContent); toast('Copied'); } catch { toast('Select the text and copy it manually'); }
-  };
-  $('#au-clear').onclick = () => {
-    picks.length = 0;
-    viewer.markers.filter((m) => m.el.classList.contains('pick')).forEach((m) => viewer.removeMarker(m));
-    refresh();
-  };
 }
 
 // ---------------------------------------------------------------- boot
@@ -576,7 +481,7 @@ async function startAuthor() {
 // The authoring tool opens from ?author=1 or #author (hash links work in hosts that strip query strings).
 window.addEventListener('hashchange', () => { if (location.hash === '#author') location.reload(); });
 if (params.has('author') || location.hash === '#author') {
-  startAuthor();
+  openBuilder();
 } else if (params.get('scenario')) {
   ui.home.hidden = true;
   openScenario(params.get('scenario'));

@@ -63,10 +63,18 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
    }
    ```
    or `{ "type": "video", "src": "media/lobby.mp4" }`.
-3. **Find coordinates** with the authoring tool: open `/#author`, or `/?author=1&scenario=scenarios/your-file.json` to load a different module.
-   Pick a scene or open a local 360 photo or video, then tap on the things you want learners to find. The tool
-   lists each point's `yaw` and `pitch` ready to copy, and draws the existing targets as dashed circles so you can
-   check they're the right size.
+3. **Build the module** in the module builder: open the app with `#author` at the end of the address (or tap
+   **Build a module** on the home screen).
+   - **Add 360° photo or video** to add each location as a scene.
+   - Add steps: **⚠ Hazard spots** (markers with a description, risk level and "how to check" list),
+     **🎯 Find task** (learners tap the right thing), **❓ Question** (multiple choice) or **💬 Message**.
+   - For hazard spots and find tasks, **tap the 360° view** where the thing is. Use **Move** to reposition it.
+   - **▶ Preview** plays the module exactly as learners will see it.
+   - **Save** gives you the module file. Upload it to `scenarios/` and the photos/videos to `media/<module-id>/`,
+     then add the module to `scenarios/index.json`.
+
+   Your work is kept in the browser while you build. Photos and videos aren't, so after closing the page the
+   builder asks you to reopen those files.
 
 Coordinates: `yaw` runs from −180 to 180, where 0 is the centre of the image and positive values are to the right.
 `pitch` runs from −90 to 90, where 0 is the horizon and positive values are up. The same numbers position the
@@ -158,7 +166,8 @@ index.html              app shell
 css/styles.css          UI (mobile-first, safe-area aware)
 js/viewer.js            WebGL 360° viewer: image/video, drag/pinch/keys/gyro, pinned DOM markers
 js/placeholder.js       draws stand-in rooms until real footage exists
-js/main.js              module runner (steps, scoring, results, authoring tool)
+js/main.js              module runner (steps, scoring, results)
+js/builder.js           module builder (#author)
 js/validate.js          module checks, shared by the app and npm run validate
 scenarios/*.json        training content
 media/                  your 360° photos / videos
