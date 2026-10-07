@@ -1,4 +1,4 @@
-import { PanoViewer, angularDistance } from './viewer.js';
+import { PanoViewer, angularDistance, fmtTime } from './viewer.js';
 import { paintPlaceholder, propElement, sameMoment } from './placeholder.js';
 import { validateScenario } from './validate.js';
 import { startBuilder } from './builder.js';
@@ -166,7 +166,8 @@ async function goToStep(i) {
   await showScene(step.scene);
   showSceneProps(step);
   // A 360 video moves, so steps can freeze it on the moment their hotspots were placed on.
-  if (currentScenario.scenes[step.scene].media.type === 'video') {
+  // (Watch steps play the video themselves.)
+  if (currentScenario.scenes[step.scene].media.type === 'video' && step.type !== 'watch') {
     const frozen = typeof step.videoTime === 'number';
     if (frozen) await viewer.seekVideo(step.videoTime); else viewer.playVideo();
     ui.btnVideo.hidden = frozen;
@@ -180,13 +181,18 @@ async function goToStep(i) {
 
 /**
  * Pictures placed into the scene from the hazard library (e.g. a wet-floor sign or a cone).
- * On a 360 video they only fit the frame they were placed on, so they're shown only while the
- * video is frozen on that moment, never over moving footage.
+ * A step shows only its own pictures, so hazards don't appear before the step that introduces
+ * them. With `showAllProps` it also shows the pictures other steps placed on the same frame
+ * (useful for "spot what's wrong" questions). On a video, pictures only fit the frame they were
+ * placed on, so they never appear over moving footage.
  */
 function showSceneProps(step) {
+  if (step.type === 'watch') return;
   const isVideo = currentScenario.scenes[step.scene].media.type === 'video';
-  for (const s of currentScenario.steps.filter((x) => x.scene === step.scene)) {
-    if (isVideo && !sameMoment(s.videoTime, step.videoTime)) continue;
+  const sources = step.showAllProps
+    ? currentScenario.steps.filter((s) => s.scene === step.scene && (!isVideo || sameMoment(s.videoTime, step.videoTime)))
+    : [step];
+  for (const s of sources) {
     for (const p of [...(s.targets || []), ...(s.hotspots || [])]) {
       const pe = p.prop?.kind && propElement(p.prop);
       if (pe) viewer.addMarker({ yaw: p.yaw, pitch: p.pitch, el: pe.el, size: pe.size, under: true });
@@ -200,6 +206,46 @@ ui.card.addEventListener('click', (e) => { if (e.target.closest('[data-action="n
 ui.banner.addEventListener('click', (e) => { if (e.target.closest('[data-action="next"]')) next(); });
 
 const STEP_TYPES = {
+  // Plays the 360 video (or part of it) while the learner looks around.
+  async watch(step, record) {
+    record(null);
+    const from = step.from ?? viewer.clipStart;
+    const to = step.to ?? viewer.clipEnd;
+    const mustWatch = step.requireFull !== false;
+    let finished = false, left = false;
+    const render = () => {
+      if (left) return;
+      const t = Math.max(0, Math.min(viewer.videoTime - from, to - from));
+      showBanner(`
+        <div class="b-title">🎬 ${esc(step.title || 'Look around')}</div>
+        ${step.body ? `<div>${esc(step.body)}</div>` : ''}
+        <div class="watch-bar"><div style="width:${(100 * t) / Math.max(0.1, to - from)}%"></div></div>
+        <div class="b-row">
+          <span class="b-meta">${finished ? 'Finished' : `${fmtTime(t)} / ${fmtTime(to - from)} · drag to look around`}</span>
+          <span class="watch-tools">
+            <button class="btn secondary small" data-sound>${viewer.muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
+            ${finished ? '<button class="btn secondary small" data-replay>↺ Watch again</button>' : ''}
+            ${finished || !mustWatch ? continueBtn(finished ? 'Continue' : 'Skip') : ''}
+          </span>
+        </div>`);
+      ui.banner.querySelector('[data-sound]').onclick = () => { viewer.setMuted(!viewer.muted); render(); };
+      const again = ui.banner.querySelector('[data-replay]');
+      if (again) again.onclick = () => play();
+    };
+    const timer = setInterval(() => { if (!finished) render(); }, 500);
+    run.cleanup = () => { left = true; clearInterval(timer); viewer.segment?.resolve(); viewer.pauseVideo(); };
+    const play = async () => {
+      finished = false;
+      render();
+      await viewer.playSegment(from, to);
+      if (left) return;
+      finished = true;
+      render();
+    };
+    play();
+  },
+
+
   // Plain message over the 360 view.
   info(step) {
     showCard(`

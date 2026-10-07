@@ -314,3 +314,9 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
 .bld-adjust-grid > label:not(.bld-check) { display: grid; grid-template-columns: 70px 1fr 52px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .bld-adjust-grid output { font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
 .bld-adjust-grid .btn { justify-self: start; }
+.watch-bar { height: 4px; border-radius: 4px; background: rgba(255,255,255,.18); margin-top: 8px; overflow: hidden; }
+.watch-bar > div { height: 100%; background: var(--accent); transition: width .45s linear; }
+.watch-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.bld-trim { width: 100%; display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
+.bld-trim-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.bld-trim small, .bld-moment small { font-size: 12px; }

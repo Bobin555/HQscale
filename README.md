@@ -76,6 +76,13 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
    - **Adjust a picture** by dragging it in the 360° view (corner handle = resize, top handle = rotate), or with
      **Adjust picture** in its card: size, rotation, width, **lie flat** (for things on the floor) and mirror.
      On a 360° video, pictures only appear on the frozen moment they were placed on, never over moving footage.
+   - **🎬 Watch video** steps play the 360° video (or a section of it) while learners look around; Continue
+     appears when it finishes (optional), and learners can turn the sound on. One is added automatically when
+     you upload a video.
+   - **✂ Trim** a video scene to the part that should play (pick the points on the timeline, then **Start here** /
+     **End here**). Trimming chooses what plays; to make the file itself smaller, cut it before uploading.
+   - Each step shows only **its own hazard pictures**, so hazards don't appear before the step that introduces
+     them. Tick **Also show hazard pictures from other steps** on a find task or question to show them there too.
    - **360° videos:** each step freezes the video on one moment, so markers stay on the thing they point at.
      Use the timeline at the bottom of the view to pick the moment, then **Use this moment**. Messages and
      questions can keep the video playing instead.

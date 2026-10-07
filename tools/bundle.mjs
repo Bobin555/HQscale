@@ -18,6 +18,16 @@ const js = ['js/viewer.js', 'js/placeholder.js', 'js/hazards.js', 'js/validate.j
   .map((f) => read(f).replace(/^import .*$/gm, '').replace(/^export /gm, ''))
   .join('\n');
 
+// Concatenation puts every module's top-level names in one scope, so a name defined in two
+// modules would break the whole page. Catch that here rather than in the browser.
+// (The lookahead skips look-alikes inside strings, such as "const float PI" in shader code.)
+const topLevel = [...js.matchAll(/^(?:const|let|var|function\*?|class|async function) ([A-Za-z_$][\w$]*)(?=\s*[=({])/gm)].map((m) => m[1]);
+const dupes = [...new Set(topLevel.filter((n, i) => topLevel.indexOf(n) !== i))];
+if (dupes.length) {
+  console.error(`Can't bundle: these names are defined in more than one file: ${dupes.join(', ')}`);
+  process.exit(1);
+}
+
 const index = JSON.parse(read('scenarios/index.json'));
 const embed = { 'scenarios/index.json': index };
 for (const m of index.modules) embed[m.file] = JSON.parse(read(m.file));

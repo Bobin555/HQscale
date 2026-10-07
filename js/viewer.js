@@ -7,6 +7,9 @@
 //   yaw = (x / W - 0.5) * 360,  pitch = (0.5 - y / H) * 180
 
 const DEG = Math.PI / 180;
+
+/** Seconds as m:ss, for video times. */
+export const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export function dirFromYawPitch(yaw, pitch) {
@@ -80,6 +83,8 @@ export class PanoViewer {
     this.viewHandlers = new Set();
     this.video = null;
     this.wantsPlaying = false; // false while a video is deliberately frozen on a frame
+    this.clip = { start: 0, end: null }; // trimmed part of the video that plays (seconds)
+    this.segment = null; // { end, resolve } while playing a section once (watch steps)
     this.dirty = true;
     this.velocity = { yaw: 0, pitch: 0 };
     this.anim = null;
@@ -222,6 +227,8 @@ export class PanoViewer {
 
     if (media.type === 'video') {
       this.#setTexParams(false);
+      this.setClip(media.start, media.end);
+      if (this.clip.start > 0) await this.seekVideo(this.clip.start);
       this.wantsPlaying = media.autoplay !== false;
       if (this.wantsPlaying) await this.video.play().catch(() => {}); // autoplay may need a user gesture; resumed on next tap
     } else {
@@ -233,6 +240,8 @@ export class PanoViewer {
   }
 
   #stopVideo() {
+    this.segment?.resolve();
+    this.segment = null;
     if (!this.video) return;
     this.video.pause();
     this.video.removeAttribute('src');
@@ -262,12 +271,44 @@ export class PanoViewer {
     this.dirty = true;
   }
 
+  /** Only the part from `start` to `end` (seconds) plays; outside it the video loops back to `start`. */
+  setClip(start = 0, end = null) {
+    this.clip = { start: Math.max(0, Number(start) || 0), end: Number.isFinite(end) && end > 0 ? end : null };
+  }
+
+  get clipStart() { return this.clip.start; }
+  get clipEnd() { return this.clip.end ?? this.videoDuration; }
+
+  /** Plays from `from` to `to` once, then pauses there. Resolves when it gets to the end. */
+  async playSegment(from = this.clipStart, to = this.clipEnd) {
+    if (!this.video) return;
+    this.segment?.resolve();
+    await this.seekVideo(from);
+    const v = this.video;
+    return new Promise((resolve) => {
+      const finish = () => {
+        v.removeEventListener('ended', finish);
+        v.loop = true;
+        if (this.segment?.resolve === finish) { this.segment = null; this.pauseVideo(); }
+        resolve();
+      };
+      v.loop = false; // so a section that runs to the end of the file stops there instead of looping
+      v.addEventListener('ended', finish);
+      this.segment = { end: Math.min(to, this.clipEnd || to), resolve: finish };
+      this.playVideo();
+    });
+  }
+
+  get muted() { return !this.video || this.video.muted; }
+  setMuted(muted) { if (this.video) this.video.muted = muted; }
+
   /** Freezes the video on the frame at `seconds`, so hotspots line up with what's shown. */
   async seekVideo(seconds) {
     const v = this.video;
     if (!v) return;
     this.pauseVideo();
-    const t = Math.max(0, Math.min(seconds, (this.videoDuration || seconds) - 0.05));
+    const hi = (this.clip.end ?? this.videoDuration ?? seconds) || seconds;
+    const t = Math.max(this.clip.start, Math.min(seconds, hi - 0.05));
     if (Math.abs(v.currentTime - t) < 0.01 && v.readyState >= 2) { this.dirty = true; return; }
     await new Promise((resolve) => {
       const done = () => { clearTimeout(timer); v.removeEventListener('seeked', done); resolve(); };
@@ -531,6 +572,18 @@ export class PanoViewer {
       this.dirty = true;
     }
 
+    const v = this.video;
+    if (v && !v.paused) {
+      // Keep playback inside the trimmed clip, and stop at the end of a played-once section.
+      const end = this.segment ? this.segment.end : this.clip.end;
+      if (end != null && v.currentTime >= end - 0.03) {
+        if (this.segment) this.segment.resolve(); else {
+          v.currentTime = this.clip.start;
+        }
+      } else if (!this.segment && this.clip.start > 0 && v.currentTime < this.clip.start - 0.1) {
+        v.currentTime = this.clip.start; // looped past the natural end of the file
+      }
+    }
     const videoFrame = this.video && this.video.readyState >= 2 && !this.video.paused;
     if (!this.dirty && !videoFrame) return;
     const gl = this.gl;

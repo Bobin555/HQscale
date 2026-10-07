@@ -2,7 +2,7 @@
 // and by `npm run validate`, which additionally checks that media files exist.
 // Returns a list of human-readable problems; an empty list means the module is OK.
 
-const VALID_STEP_TYPES = ['info', 'find', 'quiz', 'explore'];
+const VALID_STEP_TYPES = ['info', 'watch', 'find', 'quiz', 'explore'];
 const VALID_MEDIA_TYPES = ['image', 'video', 'placeholder'];
 
 export function validateScenario(s) {
@@ -21,6 +21,7 @@ export function validateScenario(s) {
     if (m.type === 'splat') add(where, 'Gaussian splat scenes are not supported yet');
     else if (!VALID_MEDIA_TYPES.includes(m.type)) add(where, `media "type" must be one of ${VALID_MEDIA_TYPES.join(', ')}`);
     if ((m.type === 'image' || m.type === 'video') && !m.src) add(where, 'media needs a "src" (e.g. "media/site/reception.jpg")');
+    if (m.start != null && m.end != null && !(m.end > m.start)) add(where, 'video trim must end after it starts');
     if (m.hfov != null && !(m.hfov > 0 && m.hfov <= 360)) add(where, 'media "hfov" must be between 1 and 360');
     if (m.vfov != null && !(m.vfov > 0 && m.vfov <= 180)) add(where, 'media "vfov" must be between 1 and 180');
     if (scene.initialView) checkPosition(scene.initialView, `${where} initialView`, add);
@@ -30,8 +31,16 @@ export function validateScenario(s) {
     const where = `step ${i + 1}${st?.title ? ` ("${st.title}")` : ''}`;
     if (!VALID_STEP_TYPES.includes(st?.type)) { add(where, `"type" must be one of ${VALID_STEP_TYPES.join(', ')}`); return; }
     if (st.videoTime != null && !(typeof st.videoTime === 'number' && st.videoTime >= 0)) add(where, '"videoTime" must be a number of seconds, 0 or more');
+    const media = s.scenes?.[st.scene]?.media;
+    if (typeof st.videoTime === 'number' && media && ((media.start != null && st.videoTime < media.start - 0.05) || (media.end != null && st.videoTime > media.end + 0.05))) {
+      add(where, 'its paused video moment is outside the trimmed part of the video');
+    }
     if (!s.scenes?.[st.scene]) add(where, `unknown scene "${st.scene}"`);
     if (st.type === 'info' && !st.title && !st.body) add(where, 'info step needs a "title" or "body"');
+    if (st.type === 'watch') {
+      if (s.scenes?.[st.scene] && s.scenes[st.scene].media?.type !== 'video') add(where, 'a "watch" step needs a video scene');
+      if (st.from != null && st.to != null && !(st.to > st.from)) add(where, 'the video section must end after it starts ("to" after "from")');
+    }
     if (st.type === 'find') {
       if (!st.prompt) add(where, 'find step needs a "prompt" telling people what to find');
       if (!st.targets?.length) add(where, 'find step needs at least one entry in "targets"');

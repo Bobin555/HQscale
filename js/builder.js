@@ -6,11 +6,13 @@
 // ("media/<module-id>/<file>"); while building, they're shown from a local blob URL.
 
 import { validateScenario } from './validate.js';
+import { fmtTime } from './viewer.js';
 import { sprite, SPRITES, propElement, propTransform, sameMoment } from './placeholder.js';
 import { HAZARDS, HAZARD_CATEGORIES } from './hazards.js';
 
 const DRAFT_KEY = 'hqscale.builder.draft';
 const STEP_INFO = {
+  watch: { icon: '🎬', name: 'Watch video', help: 'Plays the 360° video (or part of it) while learners look around.' },
   explore: { icon: '⚠', name: 'Hazard spots', help: 'Learners tap markers to learn about hazards and how to check them.' },
   find: { icon: '🎯', name: 'Find task', help: 'Learners look around and tap the right thing.' },
   quiz: { icon: '❓', name: 'Question', help: 'A multiple-choice question shown over the scene.' },
@@ -18,7 +20,6 @@ const STEP_INFO = {
 };
 const RISKS = ['high', 'medium', 'low', 'info'];
 
-const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const slug = (s) => String(s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -118,12 +119,12 @@ export function startBuilder(api) {
     const st = step();
     const dur = viewer.videoDuration;
     const t = viewer.videoTime;
-    const onStep = st && st.scene === sceneId;
+    const onStep = st && st.scene === sceneId && st.type !== 'watch';
     const frozen = onStep && typeof st.videoTime === 'number';
     const matches = frozen && Math.abs(st.videoTime - t) < 0.05;
     vbar.innerHTML = `
       <button class="btn secondary small" data-v="play" aria-label="${viewer.isVideoPaused ? 'Play' : 'Pause'}">${viewer.isVideoPaused ? '▶' : '❚❚'}</button>
-      <input type="range" min="0" max="${dur.toFixed(2)}" step="0.05" value="${t.toFixed(2)}" data-v="seek" aria-label="Video position">
+      <input type="range" min="${viewer.clipStart.toFixed(2)}" max="${(viewer.clipEnd || dur).toFixed(2)}" step="0.05" value="${t.toFixed(2)}" data-v="seek" aria-label="Video position">
       <span class="bld-vtime">${fmtTime(t)} / ${fmtTime(dur)}</span>
       ${onStep ? (matches
         ? `<span class="bld-vstat ok">📌 Step ${editing + 1} shows this moment</span>`
@@ -177,12 +178,21 @@ export function startBuilder(api) {
       draft.scenes[id].media = { ...draft.scenes[id].media, type, file: file.name };
       delete draft.scenes[id].media.src;
     }
+    const isNew = pendingFileScene == null;
     pendingFileScene = null;
     if (localUrls[id]) URL.revokeObjectURL(localUrls[id]);
     localUrls[id] = URL.createObjectURL(file);
+    // A new 360 video starts with a step that plays it, so learners can look around the place first.
+    if (isNew && type === 'video') {
+      draft.steps.push({ type: 'watch', scene: id, title: 'Look around', body: 'Drag to look around while the video plays.', requireFull: true });
+    }
     save();
+    sceneId = id;
+    editing = null;
     render();
     await showScene(id);
+    render(); // now the video's length is known for the trim controls
+    if (isNew && type === 'video') toast('Added a "Watch video" step so learners can look around first. Trim the clip or delete the step if you don\'t need it.', 'good', 6000);
   }
 
   fileInput.onchange = () => { const f = fileInput.files[0]; fileInput.value = ''; if (f) addMediaFile(f); };
@@ -220,7 +230,12 @@ export function startBuilder(api) {
     const st = step();
     // Pictures placed in the scene. Those of the step being edited can be moved, resized and rotated.
     draft.steps.forEach((s, si) => {
-      if (s.scene !== sceneId || (s !== st && !onScreenNow(s))) return;
+      if (s.scene !== sceneId) return;
+      if (st) {
+        // Show the pictures exactly as learners will see them in the step being edited.
+        const sameFrame = !isVideoScene(s.scene) || sameMoment(s.videoTime, st.videoTime);
+        if (st.type === 'watch' || (s !== st && !(st.showAllProps && sameFrame))) return;
+      } else if (!onScreenNow(s)) return;
       (points(s) || []).forEach((p, pi) => {
         const pe = p.prop?.kind && propElement(p.prop);
         if (!pe) return;
@@ -442,11 +457,13 @@ export function startBuilder(api) {
     const base = { type, scene: sceneId };
     const defaults = {
       info: { title: '', body: '' },
+      watch: { title: 'Look around', body: 'Drag to look around while the video plays.', requireFull: true },
       find: { title: '', prompt: '', targets: [], maxAttempts: 3, hint: '', explain: '' },
       quiz: { question: '', options: ['', '', '', ''], answer: 0, explain: '', shuffle: true },
       explore: { title: 'Hazards in this area', prompt: 'Tap each marker to learn what to look for and how to check it.', hotspots: [], requireAll: true },
     };
-    const moment = isVideoScene() && viewer.video ? { videoTime: Math.round(viewer.videoTime * 100) / 100 } : {};
+    if (type === 'watch' && !isVideoScene()) { toast('"Watch video" needs a 360° video scene.', 'bad'); return; }
+    const moment = type !== 'watch' && isVideoScene() && viewer.video ? { videoTime: Math.round(viewer.videoTime * 100) / 100 } : {};
     draft.steps.push({ ...base, ...defaults[type], ...moment });
     save();
     editStep(draft.steps.length - 1);
@@ -532,6 +549,7 @@ export function startBuilder(api) {
               <div class="bld-scene-tools">
                 <input data-scope="scene" data-f="title" value="${esc(sc.title || '')}" aria-label="Scene name" placeholder="Scene name">
                 <button class="btn secondary small" data-act="start-view" title="Learners start looking in the direction you're facing now">Set start view</button>
+                ${sc.media.type === 'video' ? trimControls(sc) : ''}
                 ${sc.media.file ? `<button class="btn secondary small" data-act="reopen" data-id="${esc(id)}">${localUrls[id] ? 'Replace file' : 'Reopen file'}</button>` : ''}
                 <button class="btn secondary small danger" data-act="del-scene" data-id="${esc(id)}">Remove</button>
               </div>` : ''}
@@ -553,10 +571,25 @@ export function startBuilder(api) {
           </span>
         </li>`).join('')}</ol>` : `<p class="bld-muted">${scenes.length ? 'No steps yet. Add one below.' : 'Add a 360° photo or video first.'}</p>`}
       <div class="bld-add">
-        ${Object.entries(STEP_INFO).map(([t, s]) => `<button class="bld-add-btn" data-act="add" data-type="${t}" title="${esc(s.help)}" ${scenes.length ? '' : 'disabled'}><span>${s.icon}</span>${s.name}</button>`).join('')}
+        ${Object.entries(STEP_INFO).map(([t, s]) => `<button class="bld-add-btn" data-act="add" data-type="${t}" title="${esc(s.help)}" ${scenes.length && (t !== 'watch' || isVideoScene()) ? '' : 'disabled'}><span>${s.icon}</span>${s.name}</button>`).join('')}
       </div>
       ${scenes.length ? renderLibrary() : ''}
       ${problems.length ? `<div class="bld-problems"><strong>To fix before saving:</strong><ul>${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>` : draft.steps.length ? '<p class="bld-ok">✓ Module is ready to preview and save.</p>' : ''}`;
+  }
+
+  function trimControls(sc) {
+    const dur = viewer.video ? viewer.videoDuration : 0;
+    const start = sc.media.start ?? 0;
+    const end = sc.media.end ?? dur;
+    return `<div class="bld-trim">
+      <div>✂ <strong>Trim</strong> · plays <strong>${fmtTime(start)}–${fmtTime(end)}</strong>${dur ? ` of ${fmtTime(dur)}` : ''}</div>
+      <div class="bld-trim-btns">
+        <button class="btn secondary small" data-act="trim-start" title="Move the timeline to where the clip should start, then click">Start here</button>
+        <button class="btn secondary small" data-act="trim-end" title="Move the timeline to where the clip should end, then click">End here</button>
+        ${sc.media.start != null || sc.media.end != null ? '<button class="btn secondary small" data-act="trim-clear">Use whole video</button>' : ''}
+      </div>
+      <small class="bld-muted">Use the timeline at the bottom of the view to pick the points. Trimming picks which part plays; the file itself stays the same size.</small>
+    </div>`;
   }
 
   function stepTitle(s) {
@@ -578,7 +611,20 @@ export function startBuilder(api) {
   function renderEditor(st) {
     const info = STEP_INFO[st.type];
     let body = '';
-    if (st.type === 'info') {
+    if (st.type === 'watch') {
+      const from = st.from ?? viewer.clipStart, to = st.to ?? viewer.clipEnd;
+      body = field('Title', 'title', st.title, 'e.g. Look around the reception')
+        + field('Message <em>(shown while it plays)</em>', 'body', st.body, 'e.g. Notice where the exits are.', 'textarea')
+        + `<div class="bld-moment"><span>🎬 Plays <strong>${fmtTime(from)}–${fmtTime(to)}</strong>${st.from == null && st.to == null ? ' (the whole clip)' : ''}</span>
+            <div class="bld-trim-btns">
+              <button class="btn secondary small" data-act="watch-from">Start here</button>
+              <button class="btn secondary small" data-act="watch-to">End here</button>
+              ${st.from != null || st.to != null ? '<button class="btn secondary small" data-act="watch-all">Whole clip</button>' : ''}
+              <button class="btn small" data-act="watch-play">▶ Play it</button>
+            </div>
+            <small class="bld-muted">Pick the points with the video timeline at the bottom of the view.</small></div>`
+        + `<label class="bld-check"><input type="checkbox" data-scope="step" data-f="requireFull" ${st.requireFull !== false ? 'checked' : ''}> Learners must watch to the end before continuing</label>`;
+    } else if (st.type === 'info') {
       body = field('Title', 'title', st.title, 'e.g. Welcome to the bridge site')
         + field('Message', 'body', st.body, 'What learners should read', 'textarea');
     } else if (st.type === 'quiz') {
@@ -608,10 +654,17 @@ export function startBuilder(api) {
         <span>${info.icon} <strong>${info.name}</strong> · step ${editing + 1} of ${draft.steps.length}</span>
       </div>
       ${sceneSelect(st)}
-      ${isVideoScene(st.scene) ? videoMomentField(st) : ''}
+      ${isVideoScene(st.scene) && st.type !== 'watch' ? videoMomentField(st) : ''}
+      ${st.type !== 'watch' && otherPictures(st) ? `<label class="bld-check"><input type="checkbox" data-scope="step" data-f="showAllProps" ${st.showAllProps ? 'checked' : ''}> Also show hazard pictures from other steps${isVideoScene(st.scene) ? ' at this moment' : ''}</label>` : ''}
       ${points(st) ? renderLibrary() : ''}
       ${body}
       <div class="bld-editor-foot"><button class="btn small" data-act="done">Done</button></div>`;
+  }
+
+  /** Whether other steps placed pictures on this step's scene (and frame). */
+  function otherPictures(st) {
+    return draft.steps.some((s) => s !== st && s.scene === st.scene && (!isVideoScene(st.scene) || sameMoment(s.videoTime, st.videoTime))
+      && (points(s) || []).some((p) => p.prop?.kind));
   }
 
   function videoMomentField(st) {
@@ -711,6 +764,7 @@ export function startBuilder(api) {
       }
       st[f] = v;
       if (f === 'scene') { delete st.videoTime; showScene(v); }
+      if (f === 'showAllProps') drawMarkers();
     } else if (scope === 'prop') {
       const p = points(st)[Number(el.dataset.i)];
       if (f === 'kind') {
@@ -763,6 +817,18 @@ export function startBuilder(api) {
       case 'add-media': pendingFileScene = null; fileInput.click(); break;
       case 'reopen': pendingFileScene = b.dataset.id; fileInput.click(); break;
       case 'scene': await showScene(b.dataset.id); render(); break;
+      case 'trim-start': case 'trim-end': case 'trim-clear': {
+        const m = draft.scenes[sceneId].media;
+        const t = Math.round(viewer.videoTime * 100) / 100;
+        if (act === 'trim-clear') { delete m.start; delete m.end; }
+        if (act === 'trim-start') { m.start = t; if (m.end != null && m.end <= t + 0.5) delete m.end; }
+        if (act === 'trim-end') { if (t <= (m.start ?? 0) + 0.5) { toast('The end must be after the start', 'bad'); break; } m.end = t; }
+        viewer.setClip(m.start, m.end);
+        await viewer.seekVideo(Math.max(viewer.videoTime, m.start ?? 0));
+        save(); render(); renderVideoBar(); drawMarkers();
+        toast(act === 'trim-clear' ? 'The whole video will play' : `Clip now plays ${fmtTime(m.start ?? 0)}–${fmtTime(m.end ?? viewer.videoDuration)}`, 'good');
+        break;
+      }
       case 'start-view':
         draft.scenes[sceneId].initialView = { yaw: Math.round(viewer.yaw), pitch: Math.round(viewer.pitch) };
         save(); toast('Learners will start facing this way'); break;
@@ -781,6 +847,14 @@ export function startBuilder(api) {
       case 'down': moveStep(i, 1); break;
       case 'del': confirmBox(`Delete "${stepTitle(draft.steps[i])}"?`, 'Delete', () => { draft.steps.splice(i, 1); save(); render(); drawMarkers(); }); break;
       case 'done': editing = null; moving = null; adjustOpen.clear(); render(); drawMarkers(); renderVideoBar(); break;
+      case 'watch-from': case 'watch-to': case 'watch-all': {
+        const t = Math.round(viewer.videoTime * 100) / 100;
+        if (act === 'watch-all') { delete st.from; delete st.to; }
+        if (act === 'watch-from') { st.from = t; if (st.to != null && st.to <= t + 0.5) delete st.to; }
+        if (act === 'watch-to') { if (t <= (st.from ?? viewer.clipStart) + 0.5) { toast('The end must be after the start', 'bad'); break; } st.to = t; }
+        save(); render(); break;
+      }
+      case 'watch-play': viewer.playSegment(st.from ?? viewer.clipStart, st.to ?? viewer.clipEnd).then(renderVideoBar); renderVideoBar(); break;
       case 'add-opt': st.options.push(''); save(); render(); break;
       case 'look': viewer.lookAt(points(st)[i]); break;
       case 'move': moving = moving === i ? null : i; render(); drawMarkers(); if (moving != null) toast('Tap the view where it should go'); break;
