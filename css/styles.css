@@ -358,3 +358,9 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
 .bld-tl { flex: 1 1 260px; min-width: 160px; }
 .bld-vbar { flex-wrap: nowrap; }
 @media (max-width: 760px) { .bld-vbar { flex-wrap: wrap; } .bld-tl { flex-basis: 100%; order: 3; } }
+
+/* Appears after a few seconds only if the app hasn't replaced it (a preview that can't run scripts). */
+.no-run { margin-top: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,176,32,.5); background: rgba(255,176,32,.12);
+  opacity: 0; animation: no-run-in .3s ease-out 3s forwards; }
+.no-run p { margin: 6px 0 0; color: var(--text); }
+@keyframes no-run-in { to { opacity: 1; } }

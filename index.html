@@ -50,7 +50,14 @@
         <input id="learner-name" type="text" autocomplete="name" placeholder="e.g. Sam Taylor">
       </label>
       <h2 class="section-label">Choose a module</h2>
-      <div id="module-list" class="module-list"><p class="muted">Loading modules…</p></div>
+      <div id="module-list" class="module-list">
+        <p class="muted">Loading modules…</p>
+        <!-- Shown only if the app never starts, e.g. in a phone's file or email preview, which can't run apps. -->
+        <div class="no-run">
+          <strong>This preview can't run the training.</strong>
+          <p>You're probably viewing it from Files, Mail, WhatsApp or Teams. Open the training's <strong>web link</strong> in Safari or Chrome instead.</p>
+        </div>
+      </div>
       <p class="footnote muted">Works on phones, tablets and laptops. Drag to look around, pinch or scroll to zoom.
         <a href="#author">Build a module</a></p>
     </div>
