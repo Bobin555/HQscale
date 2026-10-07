@@ -79,8 +79,10 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
    - **🎬 Watch video** steps play the 360° video (or a section of it) while learners look around; Continue
      appears when it finishes (optional), and learners can turn the sound on. One is added automatically when
      you upload a video.
-   - **✂ Trim** a video scene to the part that should play (pick the points on the timeline, then **Start here** /
-     **End here**). Trimming chooses what plays; to make the file itself smaller, cut it before uploading.
+   - **Video timeline** (below the view): click or drag to move through the video; numbered pins mark each
+     step's paused moment. **✂ Trim** by dragging the white handles at either end of the timeline. Trimming
+     chooses what plays; to make the file itself smaller, cut it before uploading.
+   - **Reorder steps** by dragging them in the list (or with the ↑ ↓ arrows).
    - Each step shows only **its own hazard pictures**, so hazards don't appear before the step that introduces
      them. Tick **Also show hazard pictures from other steps** on a find task or question to show them there too.
    - **360° videos:** each step freezes the video on one moment, so markers stay on the thing they point at.
@@ -186,6 +188,7 @@ js/placeholder.js       draws stand-in rooms until real footage exists
 js/main.js              module runner (steps, scoring, results)
 js/builder.js           module builder (#author)
 js/hazards.js           hazard library used by the builder
+js/timeline.js          clickable video timeline (builder and watch steps)
 js/validate.js          module checks, shared by the app and npm run validate
 scenarios/*.json        training content
 media/                  your 360° photos / videos

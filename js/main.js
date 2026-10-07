@@ -2,6 +2,7 @@ import { PanoViewer, angularDistance, fmtTime } from './viewer.js';
 import { paintPlaceholder, propElement, sameMoment } from './placeholder.js';
 import { validateScenario } from './validate.js';
 import { startBuilder } from './builder.js';
+import { createTimeline } from './timeline.js';
 
 const $ = (sel) => document.querySelector(sel);
 const params = new URLSearchParams(location.search);
@@ -212,37 +213,69 @@ const STEP_TYPES = {
     const from = step.from ?? viewer.clipStart;
     const to = step.to ?? viewer.clipEnd;
     const mustWatch = step.requireFull !== false;
-    let finished = false, left = false;
-    const render = () => {
+    let finished = false, left = false, furthest = from;
+    ui.btnVideo.hidden = true; // the banner has its own play button and timeline
+
+    // Banner is built once; only its time, buttons and timeline are refreshed, so dragging the
+    // timeline isn't interrupted.
+    showBanner(`
+      <div class="b-title">🎬 ${esc(step.title || 'Look around')}</div>
+      ${step.body ? `<div>${esc(step.body)}</div>` : ''}
+      <div class="watch-row"><button class="icon-btn watch-play" data-play aria-label="Play or pause"></button><div class="watch-tl"></div></div>
+      <div class="b-row"><span class="b-meta"></span><span class="watch-tools"></span></div>`);
+    const tl = createTimeline({
+      min: from, max: to,
+      get: () => viewer.videoTime,
+      // Required viewing: learners can go back freely, but not skip past what they've watched.
+      limit: mustWatch ? () => furthest : null,
+      onSeek: async (t) => {
+        const resume = !viewer.isVideoPaused;
+        await viewer.seekVideo(t);
+        if (resume) viewer.playVideo();
+        refresh();
+      },
+    });
+    ui.banner.querySelector('.watch-tl').append(tl.el);
+
+    const refresh = () => {
       if (left) return;
-      const t = Math.max(0, Math.min(viewer.videoTime - from, to - from));
-      showBanner(`
-        <div class="b-title">🎬 ${esc(step.title || 'Look around')}</div>
-        ${step.body ? `<div>${esc(step.body)}</div>` : ''}
-        <div class="watch-bar"><div style="width:${(100 * t) / Math.max(0.1, to - from)}%"></div></div>
-        <div class="b-row">
-          <span class="b-meta">${finished ? 'Finished' : `${fmtTime(t)} / ${fmtTime(to - from)} · drag to look around`}</span>
-          <span class="watch-tools">
-            <button class="btn secondary small" data-sound>${viewer.muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
-            ${finished ? '<button class="btn secondary small" data-replay>↺ Watch again</button>' : ''}
-            ${finished || !mustWatch ? continueBtn(finished ? 'Continue' : 'Skip') : ''}
-          </span>
-        </div>`);
-      ui.banner.querySelector('[data-sound]').onclick = () => { viewer.setMuted(!viewer.muted); render(); };
-      const again = ui.banner.querySelector('[data-replay]');
-      if (again) again.onclick = () => play();
+      const t = viewer.videoTime;
+      if (!viewer.isVideoPaused) furthest = Math.max(furthest, t);
+      tl.update();
+      ui.banner.querySelector('.b-meta').textContent = finished ? 'Finished · drag the timeline to look again'
+        : `${fmtTime(Math.max(0, t - from))} / ${fmtTime(to - from)} · drag to look around`;
+      ui.banner.querySelector('[data-play]').textContent = viewer.isVideoPaused ? '▶' : '❚❚';
     };
-    const timer = setInterval(() => { if (!finished) render(); }, 500);
-    run.cleanup = () => { left = true; clearInterval(timer); viewer.segment?.resolve(); viewer.pauseVideo(); };
-    const play = async () => {
+    const refreshTools = () => {
+      if (left) return;
+      const tools = ui.banner.querySelector('.watch-tools');
+      tools.innerHTML = `
+        <button class="btn secondary small" data-sound>${viewer.muted ? '🔇 Sound off' : '🔊 Sound on'}</button>
+        ${finished ? '<button class="btn secondary small" data-replay>↺ Watch again</button>' : ''}
+        ${finished || !mustWatch ? continueBtn(finished ? 'Continue' : 'Skip') : ''}`;
+      tools.querySelector('[data-sound]').onclick = () => { viewer.setMuted(!viewer.muted); refreshTools(); };
+      const again = tools.querySelector('[data-replay]');
+      if (again) again.onclick = () => playFrom(from);
+      refresh();
+    };
+    const playFrom = async (t) => {
       finished = false;
-      render();
-      await viewer.playSegment(from, to);
+      refreshTools();
+      await viewer.playSegment(t, to);
       if (left) return;
-      finished = true;
-      render();
+      if (viewer.videoTime >= to - 0.2) { finished = true; furthest = to; }
+      refreshTools();
     };
-    play();
+    ui.banner.querySelector('[data-play]').onclick = () => {
+      if (!viewer.isVideoPaused) viewer.pauseVideo();
+      else if (viewer.segment) viewer.playVideo();
+      else playFrom(viewer.videoTime >= to - 0.2 ? from : viewer.videoTime);
+      refresh();
+    };
+
+    const timer = setInterval(refresh, 250);
+    run.cleanup = () => { left = true; clearInterval(timer); viewer.segment?.resolve(); viewer.pauseVideo(); };
+    playFrom(from);
   },
 
 

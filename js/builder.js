@@ -7,6 +7,7 @@
 
 import { validateScenario } from './validate.js';
 import { fmtTime } from './viewer.js';
+import { createTimeline } from './timeline.js';
 import { sprite, SPRITES, propElement, propTransform, sameMoment } from './placeholder.js';
 import { HAZARDS, HAZARD_CATEGORIES } from './hazards.js';
 
@@ -112,55 +113,108 @@ export function startBuilder(api) {
   // A 360 video moves, so each step shows the video frozen on one moment. Markers are placed
   // on that frame and learners see exactly the same frame.
 
+  let timeline = null;
+
   function renderVideoBar() {
     const show = !panel.hidden && isVideoScene() && viewer.video;
     vbar.hidden = !show;
-    if (!show) return;
+    if (!show) { timeline = null; return; }
+    const media = draft.scenes[sceneId].media;
+    vbar.innerHTML = `
+      <button class="btn secondary small" data-v="play" aria-label="Play or pause"></button>
+      <div class="bld-tl"></div>
+      <span class="bld-vtime"></span>
+      <span class="bld-vstat-wrap"></span>`;
+    // Full-length timeline: click or drag to move through the video, drag the end handles to trim,
+    // numbered pins show each step's paused moment.
+    timeline = createTimeline({
+      min: 0,
+      max: viewer.videoDuration,
+      get: () => viewer.videoTime,
+      onSeek: async (t) => { await viewer.seekVideo(t); updateVideoBar(); drawMarkers(); },
+      trim: {
+        start: media.start ?? 0,
+        end: media.end ?? viewer.videoDuration,
+        onChange: (start, end, done, handle) => trimTo(start, end, done, handle),
+      },
+      pins: () => draft.steps.map((s, i) => ({ s, i })).filter(({ s }) => s.scene === sceneId && typeof s.videoTime === 'number')
+        .map(({ s, i }) => ({ t: s.videoTime, label: i + 1, active: i === editing, title: `Step ${i + 1}: ${stepTitle(s)} (${fmtTime(s.videoTime)})` })),
+    });
+    vbar.querySelector('.bld-tl').append(timeline.el);
+    updateVideoBar();
+  }
+
+  /** Refreshes the time, play button and step status without rebuilding the timeline. */
+  function updateVideoBar() {
+    if (vbar.hidden || !timeline) return;
     const st = step();
-    const dur = viewer.videoDuration;
     const t = viewer.videoTime;
+    timeline.update();
+    vbar.querySelector('[data-v="play"]').textContent = viewer.isVideoPaused ? '▶' : '❚❚';
+    vbar.querySelector('.bld-vtime').textContent = `${fmtTime(t)} / ${fmtTime(viewer.videoDuration)}`;
     const onStep = st && st.scene === sceneId && st.type !== 'watch';
     const frozen = onStep && typeof st.videoTime === 'number';
     const matches = frozen && Math.abs(st.videoTime - t) < 0.05;
-    vbar.innerHTML = `
-      <button class="btn secondary small" data-v="play" aria-label="${viewer.isVideoPaused ? 'Play' : 'Pause'}">${viewer.isVideoPaused ? '▶' : '❚❚'}</button>
-      <input type="range" min="${viewer.clipStart.toFixed(2)}" max="${(viewer.clipEnd || dur).toFixed(2)}" step="0.05" value="${t.toFixed(2)}" data-v="seek" aria-label="Video position">
-      <span class="bld-vtime">${fmtTime(t)} / ${fmtTime(dur)}</span>
-      ${onStep ? (matches
-        ? `<span class="bld-vstat ok">📌 Step ${editing + 1} shows this moment</span>`
-        : `<button class="btn small" data-v="use">📌 Use this moment for step ${editing + 1}</button>${frozen ? `<button class="btn secondary small" data-v="goto">Back to ${fmtTime(st.videoTime)}</button>` : ''}`) : ''}`;
+    vbar.querySelector('.bld-vstat-wrap').innerHTML = onStep ? (matches
+      ? `<span class="bld-vstat ok">📌 Step ${editing + 1} shows this moment</span>`
+      : `<button class="btn small" data-v="use">📌 Use this moment for step ${editing + 1}</button>${frozen ? `<button class="btn secondary small" data-v="goto">Back to ${fmtTime(st.videoTime)}</button>` : ''}`) : '';
   }
-  vbar.addEventListener('input', (e) => {
-    if (e.target.dataset.v !== 'seek') return;
-    viewer.seekVideo(Number(e.target.value)).then(() => {
-      vbar.querySelector('.bld-vtime').textContent = `${fmtTime(viewer.videoTime)} / ${fmtTime(viewer.videoDuration)}`;
-      drawMarkers();
-    });
-  });
-  vbar.addEventListener('change', (e) => { if (e.target.dataset.v === 'seek') renderVideoBar(); });
+
+  // Dragging a trim handle shows the frame under it, so you can see exactly where the cut is.
+  let trimSeek = null, trimSeeking = false;
+  async function trimTo(start, end, done, handle) {
+    const media = draft.scenes[sceneId].media;
+    const dur = viewer.videoDuration;
+    if (start > 0.05) media.start = start; else delete media.start;
+    if (end < dur - 0.05) media.end = end; else delete media.end;
+    viewer.setClip(media.start, media.end);
+    if (!done) {
+      trimSeek = handle === 'end' ? end - 0.06 : start;
+      if (!trimSeeking) {
+        trimSeeking = true;
+        while (trimSeek != null) { const t = trimSeek; trimSeek = null; await viewer.seekVideo(t); }
+        trimSeeking = false;
+        updateVideoBar();
+      }
+      return;
+    }
+    // Steps paused on a moment that's now cut off: messages and questions just move inside the
+    // clip; steps with markers would no longer line up, so they're listed for the author to fix.
+    const lo = media.start ?? 0, hi = (media.end ?? dur) - 0.05;
+    const outside = draft.steps.map((s, i) => [s, i]).filter(([s]) => s.scene === sceneId && typeof s.videoTime === 'number' && (s.videoTime < lo - 0.05 || s.videoTime > hi + 0.1));
+    const toFix = [];
+    for (const [s, i] of outside) {
+      if ((points(s) || []).length) toFix.push(i + 1);
+      else s.videoTime = Math.round(Math.min(hi, Math.max(lo, s.videoTime)) * 100) / 100;
+    }
+    save();
+    render();
+    updateVideoBar();
+    drawMarkers();
+    if (toFix.length) {
+      toast(`Step${toFix.length > 1 ? 's' : ''} ${toFix.join(', ')} ${toFix.length > 1 ? 'are' : 'is'} paused on a moment you've cut off. Open ${toFix.length > 1 ? 'them' : 'it'} and pick a new moment.`, 'bad', 8000);
+    } else {
+      toast(media.start == null && media.end == null ? 'The whole video will play' : `Clip plays ${fmtTime(media.start ?? 0)}–${fmtTime(media.end ?? dur)}`, 'good');
+    }
+  }
+
   vbar.addEventListener('click', async (e) => {
     const v = e.target.closest('[data-v]')?.dataset.v;
     const st = step();
-    if (v === 'play') { viewer.toggleVideo(); renderVideoBar(); drawMarkers(); }
+    if (v === 'play') { viewer.toggleVideo(); updateVideoBar(); drawMarkers(); }
     if (v === 'use' && st) {
       viewer.pauseVideo();
       st.videoTime = Math.round(viewer.videoTime * 100) / 100;
       save();
       toast(`Step ${editing + 1} will show the video at ${fmtTime(st.videoTime)}`, 'good');
       render();
-      renderVideoBar();
+      updateVideoBar();
       drawMarkers();
     }
-    if (v === 'goto' && st) { await viewer.seekVideo(st.videoTime); renderVideoBar(); drawMarkers(); }
+    if (v === 'goto' && st) { await viewer.seekVideo(st.videoTime); updateVideoBar(); drawMarkers(); }
   });
-  // Keep the time readout moving while the video plays.
-  setInterval(() => {
-    if (vbar.hidden || viewer.isVideoPaused) return;
-    const r = vbar.querySelector('[data-v="seek"]');
-    if (r && document.activeElement !== r) r.value = viewer.videoTime;
-    const tm = vbar.querySelector('.bld-vtime');
-    if (tm) tm.textContent = `${fmtTime(viewer.videoTime)} / ${fmtTime(viewer.videoDuration)}`;
-  }, 250);
+  // Keep the timeline moving while the video plays.
+  setInterval(() => { if (!vbar.hidden && !viewer.isVideoPaused) updateVideoBar(); }, 250);
 
   async function addMediaFile(file) {
     const ext = file.name.split('.').pop().toLowerCase();
@@ -558,8 +612,10 @@ export function startBuilder(api) {
       <button class="btn secondary small" data-act="add-media">＋ Add 360° photo or video</button>
 
       <h3 class="bld-h">2 · Steps <em>(learners go through these in order)</em></h3>
+      ${draft.steps.length > 1 ? '<p class="bld-muted bld-hint">Drag steps to change their order.</p>' : ''}
       ${draft.steps.length ? `<ol class="bld-steps">${draft.steps.map((s, i) => `
-        <li>
+        <li data-row="${i}">
+          <span class="bld-grip" title="Drag to reorder" aria-hidden="true">⠿</span>
           <button class="bld-step" data-act="edit" data-i="${i}">
             <span class="ico">${STEP_INFO[s.type].icon}</span>
             <span class="txt"><strong>${esc(stepTitle(s))}</strong><small>${STEP_INFO[s.type].name} · ${esc(draft.scenes[s.scene]?.title || s.scene)}${countText(s)}</small></span>
@@ -581,14 +637,11 @@ export function startBuilder(api) {
     const dur = viewer.video ? viewer.videoDuration : 0;
     const start = sc.media.start ?? 0;
     const end = sc.media.end ?? dur;
+    const trimmed = sc.media.start != null || sc.media.end != null;
     return `<div class="bld-trim">
       <div>✂ <strong>Trim</strong> · plays <strong>${fmtTime(start)}–${fmtTime(end)}</strong>${dur ? ` of ${fmtTime(dur)}` : ''}</div>
-      <div class="bld-trim-btns">
-        <button class="btn secondary small" data-act="trim-start" title="Move the timeline to where the clip should start, then click">Start here</button>
-        <button class="btn secondary small" data-act="trim-end" title="Move the timeline to where the clip should end, then click">End here</button>
-        ${sc.media.start != null || sc.media.end != null ? '<button class="btn secondary small" data-act="trim-clear">Use whole video</button>' : ''}
-      </div>
-      <small class="bld-muted">Use the timeline at the bottom of the view to pick the points. Trimming picks which part plays; the file itself stays the same size.</small>
+      <small class="bld-muted">Drag the <strong>white handles</strong> at the ends of the timeline below the video to cut the start and end. Click or drag the timeline to move through the video.</small>
+      ${trimmed ? '<div class="bld-trim-btns"><button class="btn secondary small" data-act="trim-clear">Use whole video</button></div>' : ''}
     </div>`;
   }
 
@@ -854,7 +907,7 @@ export function startBuilder(api) {
         if (act === 'watch-to') { if (t <= (st.from ?? viewer.clipStart) + 0.5) { toast('The end must be after the start', 'bad'); break; } st.to = t; }
         save(); render(); break;
       }
-      case 'watch-play': viewer.playSegment(st.from ?? viewer.clipStart, st.to ?? viewer.clipEnd).then(renderVideoBar); renderVideoBar(); break;
+      case 'watch-play': viewer.playSegment(st.from ?? viewer.clipStart, st.to ?? viewer.clipEnd).then(updateVideoBar); updateVideoBar(); break;
       case 'add-opt': st.options.push(''); save(); render(); break;
       case 'look': viewer.lookAt(points(st)[i]); break;
       case 'move': moving = moving === i ? null : i; render(); drawMarkers(); if (moving != null) toast('Tap the view where it should go'); break;
@@ -878,6 +931,76 @@ export function startBuilder(api) {
     if (e.target.dataset.act !== 'open-existing' || !e.target.value) return;
     try { openModule(await loadModule(e.target.value)); } catch (err) { toast(err.message, 'bad', 6000); }
   });
+
+  // ------------------------------------------------------------ drag to reorder steps
+
+  let justDragged = false;
+  panel.addEventListener('pointerdown', (e) => {
+    const li = e.target.closest('.bld-steps > li');
+    if (!li || e.button !== 0 || e.target.closest('.bld-step-tools')) return;
+    const list = li.parentElement;
+    const rows = [...list.children];
+    const from = rows.indexOf(li);
+    const body = panel.querySelector('.bld-body');
+    const startY = e.clientY;
+    const startScroll = body.scrollTop;
+    let dragging = false, to = from, lastY = e.clientY, scroller = null;
+
+    const layout = () => {
+      // Pointer position in list coordinates, so it keeps working while the list scrolls.
+      const dy = lastY - startY + (body.scrollTop - startScroll);
+      li.style.transform = `translateY(${dy}px)`;
+      const h = li.offsetHeight + 6;
+      const centre = li.offsetTop + li.offsetHeight / 2 + dy;
+      to = 0;
+      rows.forEach((r) => { if (r !== li && centre > r.offsetTop + r.offsetHeight / 2) to += 1; }); // rows above it
+      to = Math.min(rows.length - 1, to);
+      rows.forEach((r, i) => {
+        if (r === li) return;
+        const shift = from < to && i > from && i <= to ? -h : from > to && i >= to && i < from ? h : 0;
+        r.style.transform = shift ? `translateY(${shift}px)` : '';
+      });
+    };
+    const move = (ev) => {
+      lastY = ev.clientY;
+      if (!dragging) {
+        if (Math.abs(ev.clientY - startY) < 6) return;
+        dragging = true;
+        li.setPointerCapture(ev.pointerId);
+        li.classList.add('dragging');
+        list.classList.add('reordering');
+      }
+      // Auto-scroll when dragging near the top or bottom of the panel.
+      const r = body.getBoundingClientRect();
+      const edge = ev.clientY < r.top + 40 ? -12 : ev.clientY > r.bottom - 40 ? 12 : 0;
+      clearInterval(scroller);
+      if (edge) scroller = setInterval(() => { body.scrollTop += edge; layout(); }, 16);
+      layout();
+    };
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      clearInterval(scroller);
+      if (!dragging) return;
+      justDragged = true;
+      setTimeout(() => { justDragged = false; }, 0);
+      rows.forEach((r) => { r.style.transform = ''; });
+      if (to !== from) {
+        const [moved] = draft.steps.splice(from, 1);
+        draft.steps.splice(to, 0, moved);
+        save();
+        toast(`Moved "${stepTitle(moved)}" to step ${to + 1}`, 'good');
+      }
+      render();
+      drawMarkers();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+  // A drag ends with a click on the step; don't open it.
+  panel.addEventListener('click', (e) => { if (justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
 
   // ------------------------------------------------------------ preview & save
 
