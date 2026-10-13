@@ -1,0 +1,128 @@
+{
+  "id": "office-hq",
+  "title": "Office HQ",
+  "description": "will learn all about their new office ",
+  "estimatedMinutes": 5,
+  "passMark": 0.8,
+  "scenes": {
+    "reception": {
+      "title": "Reception",
+      "initialView": {
+        "yaw": 0,
+        "pitch": 0
+      },
+      "media": {
+        "type": "video",
+        "src": "media/office-hq/Reception (1).mp4"
+      }
+    }
+  },
+  "steps": [
+    {
+      "type": "info",
+      "scene": "reception",
+      "title": "Welcome to your reception",
+      "body": "This is you first step in coming to the office. this is your reception area, which is your first point to get your ID."
+    },
+    {
+      "type": "info",
+      "scene": "reception",
+      "title": "Reception desk",
+      "body": "This is where you need to collect your IDs",
+      "videoTime": 23.76
+    },
+    {
+      "type": "find",
+      "scene": "reception",
+      "title": "Check in screen",
+      "prompt": "Look around to find the check in screens",
+      "targets": [
+        {
+          "yaw": -147,
+          "pitch": -27,
+          "radius": 13,
+          "label": "Check in Screens"
+        }
+      ],
+      "maxAttempts": 3,
+      "hint": "Its near the screen",
+      "explain": "Before you recieve your ID you should make sure you check-in ",
+      "videoTime": 21.35
+    },
+    {
+      "type": "explore",
+      "scene": "reception",
+      "title": "Obstructed walkway",
+      "prompt": "Tap each marker to learn what to look for and how to check it.",
+      "hotspots": [
+        {
+          "yaw": 138.1,
+          "pitch": -10.3,
+          "icon": "hazard",
+          "risk": "medium",
+          "title": "Obstructed walkway",
+          "body": "Boxes and equipment left in walkways cause trips and slow down evacuation.",
+          "checklist": [
+            "Walkways are kept clear",
+            "Deliveries are moved to storage promptly",
+            "Nothing is stored in corridors"
+          ],
+          "prop": {
+            "kind": "boxes",
+            "scale": 0.76
+          }
+        }
+      ],
+      "requireAll": true,
+      "videoTime": 0
+    },
+    {
+      "type": "explore",
+      "scene": "reception",
+      "title": "Hazards in this area",
+      "prompt": "Tap each marker to learn what to look for and how to check it.",
+      "hotspots": [
+        {
+          "yaw": 8,
+          "pitch": -24,
+          "icon": "hazard",
+          "risk": "medium",
+          "title": "Water Hazard",
+          "body": "Water Hazard ",
+          "checklist": [],
+          "prop": {
+            "kind": "puddle",
+            "scale": 1
+          }
+        }
+      ],
+      "requireAll": true,
+      "videoTime": 8.15
+    },
+    {
+      "type": "explore",
+      "scene": "reception",
+      "title": "Hazards in this area",
+      "prompt": "Tap each marker to learn what to look for and how to check it.",
+      "hotspots": [
+        {
+          "yaw": -131.9,
+          "pitch": -14.7,
+          "icon": "hazard",
+          "risk": "medium",
+          "title": "Trailing cable ",
+          "body": "Hazard",
+          "checklist": [
+            "hazard"
+          ],
+          "prop": {
+            "kind": "cable",
+            "scale": 0.41
+          }
+        }
+      ],
+      "requireAll": true,
+      "videoTime": 10.25
+    }
+  ]
+}
