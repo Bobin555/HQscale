@@ -1,17 +1,22 @@
 # HQscale — 360° site induction & HSE training
 
-A lightweight web app for HR and HSE teams. Learners open a link on a laptop, tablet or phone,
-look around a real site in 360°, and complete short tasks:
+A lightweight web app for HR and HSE teams. Learners open a link on a laptop, tablet or phone (or in an immersive
+room such as an Igloo), look around a real site in 360°, and complete short tasks:
 
+- **Watch video**: play a 360° video (or part of it) while learners look around.
 - **Find**: "Look around reception and tap the first aid kit." Supports several targets at once, e.g. "find all 3 hazards".
-- **Quiz**: four-option questions shown over the 360° scene, e.g. "What should you do before you leave the building?"
-- **Explore**: hazard and safety-check hotspots that open a "how to check" checklist.
-- **Info**: short messages between tasks.
+- **Question**: multiple-choice questions shown over the 360° scene, e.g. "What should you do before you leave the building?"
+- **Hazard spots**: hazard and safety-check markers that open a description and a "how to check" list.
+- **Message**: short messages between tasks.
 
-At the end, learners see their score and pass/fail against the module's pass mark. They can also download a CSV record.
+On a 360° video, each step freezes the video on a chosen moment so markers stay on what they point at.
+At the end, learners see their score and pass/fail against the module's pass mark, and can download or copy a record.
+
+HR/HSE authors build modules in the browser with the **module builder** (no coding): add 360° photos or videos,
+trim them, drag hazards in from a **hazard library**, place and adjust pictures in the scene, and preview as a learner.
 
 The app has no build step and no dependencies. It is plain HTML, CSS and JavaScript with a small WebGL
-panorama renderer (about 80 KB in total, around 25 KB gzipped, excluding your media). It works offline after the first
+panorama renderer (about 195 KB in total, around 55 KB gzipped, excluding your media). It works offline after the first
 visit and can be installed to a phone's home screen (PWA).
 
 ## Try it
@@ -32,8 +37,10 @@ footage exists:
 
 ### Put it on a web link
 
-- **GitHub Pages** (free): `.github/workflows/pages.yml` runs the tests and deploys on every push to `main`.
-  To turn it on, open the repo's **Settings → Pages** and set **Source** to **GitHub Actions**.
+- **GitHub Pages** (free): open the repo's **Settings → Pages**, choose **Deploy from a branch**, select this branch
+  and `/ (root)`, and save. The site appears at `https://<owner>.github.io/<repo>/` and updates on every push.
+  (Alternatively set **Source** to **GitHub Actions**: `.github/workflows/pages.yml` validates the modules, runs the
+  tests and then deploys.) A GitHub Pages site is **public**: don't put confidential footage in a public repository.
 - Netlify, Vercel, Azure Static Web Apps, S3 and SharePoint-hosted static sites also work. Upload the folder as it is.
 
 HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
@@ -45,6 +52,9 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
 | Look around | drag, or arrow keys | drag, or 🧭 to move the phone |
 | Zoom | scroll wheel, `+` / `-` | pinch |
 | Select | click | tap |
+| Video (Watch video steps) | click or drag the timeline, ▶/❚❚ | tap or drag the timeline |
+
+In an immersive room view the scene stays level and doesn't zoom; dragging, scrolling or the arrow keys turn the room.
 
 ## Using your own 360° footage
 
@@ -53,7 +63,11 @@ HTTPS is required for the phone "motion look" (gyroscope) and for offline mode.
    - Mount the camera at eye height (about 1.6 m) on a tripod, and stand out of shot.
    - For phones, 4096×2048 JPGs at about 80% quality (≈1–2 MB each) look sharp and load fast. The viewer
      automatically scales down anything larger than the device's GPU supports.
-   - For video, use H.264 MP4 at 3840×1920 or smaller, keep clips short, and loop them. Videos play muted.
+   - For video, use H.264 MP4 at 3840×1920 or smaller and keep clips short. Videos start muted; learners can turn
+     the sound on in Watch video steps.
+   - GitHub's website only accepts files up to 25 MB. To shrink a video, use HandBrake (free): MP4, **Cropping: None**
+     (otherwise the 360° image is cut), width 3840 (height 1920), H.264, Constant Quality RF 26–28, Web Optimized.
+     Keep the original file name.
 2. **Add the file** to `media/` and point the scene at it:
    ```json
    "reception": {
@@ -154,6 +168,10 @@ A module is one JSON file in `scenarios/`, listed in `scenarios/index.json`. You
   "steps": [
     { "type": "info", "scene": "reception", "title": "Welcome", "body": "Text\nwith line breaks" },
 
+    { "type": "watch", "scene": "walkthrough", "title": "Look around", "body": "...",
+      "from": 2, "to": 14,                 // optional section of the video, in seconds (default: the whole clip)
+      "requireFull": true },               // learners must reach the end; they can go back but not skip ahead
+
     { "type": "find", "scene": "reception",
       "title": "Find the first aid kit", "prompt": "Look around and tap on the first aid kit.",
       "targets": [{ "yaw": 96, "pitch": 7, "radius": 8, "label": "First aid kit" }],   // radius in degrees
@@ -174,7 +192,17 @@ A module is one JSON file in `scenarios/`, listed in `scenarios/index.json`. You
 }
 ```
 
-`find` and `quiz` steps are scored. `info` and `explore` steps are not. The app checks the file when it loads it, and
+More options the builder writes for you:
+
+| Where | Option | Meaning |
+|---|---|---|
+| scene `media` | `"start": 3.5, "end": 40` | trim a video: only this part plays |
+| scene `media` | `"hfov": 180, "vfov": 90` | coverage of a partial panorama (normally worked out automatically) |
+| any step on a video scene | `"videoTime": 12.4` | the video is frozen on this moment during the step |
+| any step | `"showAllProps": true` | also show pictures placed by other steps on the same frame |
+| target / hotspot | `"prop": { "kind": "puddle", "scale": 1.2, "rotate": 0, "aspect": 1, "flat": 60, "flip": false }` | a picture from the hazard library placed in the scene (size, rotation, width, lie flat, mirror) |
+
+`find` and `quiz` steps are scored. `info`, `watch` and `explore` steps are not. The app checks the file when it loads it, and
 `npm run validate` checks every module. Both list problems in plain language, such as an unknown scene or a quiz answer
 that's out of range.
 
@@ -199,15 +227,51 @@ tests/                  unit tests (npm test)
 
 ## Running a module from this computer (e.g. SharePoint videos)
 
-Footage that must stay private can live in SharePoint/OneDrive instead of this repository:
+Footage that must stay private can live in SharePoint/OneDrive instead of this repository. SharePoint can't stream
+videos into the app directly (it doesn't allow other sites to use its files; see "Where videos can be hosted"), but
+a **synced** SharePoint folder works:
 
-1. Put the module file (from the builder's **Save → Download**) and its videos together in one SharePoint folder,
-   and **Sync** it (or **Add shortcut to My files**) on the computer that will run the training.
-2. Open HQscale (the link or `dist/hqscale.html`), add `#room-walls-4` etc. for an immersive room if needed, and
-   choose **📂 Open a module from this computer** → pick that folder.
+```
+SharePoint › HSE Training › Office HQ   (synced to the computer)
+   ├── HQscale.html          the app (dist/hqscale.html)
+   ├── office-hq.json        the module, from the builder's Save → Download
+   └── Reception (1).mp4 …   the videos the module uses (same file names as when it was built)
+```
 
-Videos are matched by file name and played from the computer; nothing is uploaded. It only works on computers
-that have the folder, so it suits demos and rooms. For learners on their own devices, use hosted storage (Azure Blob).
+**Authoring**
+
+1. In SharePoint, click **Sync** (or **Add shortcut to My files**) on the folder.
+2. Open `HQscale.html` and add `#author` to the address to open the builder.
+3. Editing an existing module: **⋯ → Open a saved module file…** → pick the `.json`, then **Reopen file** on each
+   scene and pick its video from the synced folder. (Work in progress is also kept in that browser between visits.)
+4. New videos: **＋ Add 360° photo or video** from the synced folder. Give videos their final names first; the
+   module remembers file names.
+5. Build and **▶ Preview**, then **Save → Download** and move the `.json` into the folder, replacing the old one.
+   If several module files are there (e.g. `office-hq (1).json`), the newest is used.
+
+**Running** (laptop, demo or immersive room)
+
+1. Open HQscale (`HQscale.html`, or the hosted link; add `#room-walls-4` etc. in an immersive room).
+2. Choose **📂 Open a module from this computer** → pick the folder.
+
+Videos are matched by file name and played from the computer; nothing is uploaded, and the 25 MB GitHub limit
+doesn't apply. Before a session, right-click the folder → **Always keep on this device** so videos play smoothly.
+It only works on computers that have the folder, so it suits authoring, demos and rooms; for learners on their
+own devices, use hosted storage (Azure Blob Storage).
+
+## Where videos can be hosted
+
+The 360° viewer reads the video's pixels with the graphics chip, so the browser only allows a video from another
+site if that site grants permission (**CORS**) and serves the file itself (not a viewer page). Without it the
+view stays black.
+
+| Host | Works? |
+|---|---|
+| This repository / GitHub Pages | Yes (public; 25 MB per file via the website, 100 MB via git) |
+| Azure Blob Storage (CORS set to the app's address) | Yes, recommended: private options, built for streaming |
+| AWS S3, Cloudflare R2, other cloud storage with CORS | Yes |
+| SharePoint / OneDrive links, Google Drive, Dropbox, YouTube | No (use a synced folder, above) |
+| CIRRUSinsite | Only if it provides direct video links and allows CORS |
 
 ## Who can build and publish
 
@@ -247,11 +311,19 @@ Nothing is sent to a server. To report completions centrally, see the roadmap.
   already media-agnostic. The plan is to lazy-load a splat renderer (e.g. Spark or `gaussian-splats-3d`, both built
   on three.js) only for splat scenes, so image and video modules stay small. Hotspots would move from yaw/pitch to
   3D positions.
-- **Central reporting**: post results to an LMS (SCORM/xAPI), a Microsoft Form/SharePoint list, or a small API.
-- **Visual editor**: build whole modules in the browser (the current authoring tool only captures coordinates).
-- Audio narration, multiple languages, and scene-to-scene navigation arrows for free exploration.
+- **Azure hosting**: Azure Static Web Apps with Entra ID sign-in and an "author" role (only authors can open the
+  builder and publish), Azure Blob Storage for videos.
+- **Central publishing**: a **Publish** button in the builder instead of downloading and uploading module files.
+- **Central reporting**: completion records for HR, or SCORM/xAPI packages for an existing LMS.
+- **WebXR**: a VR/room button for headsets and Igloo's WebXR integration.
+- **"Add video from a web link"** in the builder, with a check that the host allows it.
+- A floor-plan step to jump between scenes, audio narration, and multiple languages.
 
 ## Single-file build
 
 `npm run bundle` writes `dist/hqscale.html`, one self-contained file with the CSS, JavaScript, modules and icon inlined.
-Use it where you can only host or send a single file. Images and videos referenced by `src` still need to be hosted next to it.
+Use it where you can only host or send a single file, or to run it straight from disk on a laptop (double-click to
+open it in Chrome or Edge). Videos aren't inside it: use **📂 Open a module from this computer** or hosted media.
+
+Phone file and email previews (Files, Mail, WhatsApp, Teams) show the page but can't run it; after a few seconds
+it says so. On phones, use a hosted link in Safari or Chrome.
