@@ -578,10 +578,47 @@ function openBuilder() {
   });
 }
 
+// ---------------------------------------------------------------- immersive room
+
+/**
+ * Room view for immersive rooms such as an Igloo, chosen by the link:
+ *   #room  or ?room=pano            one 360° strip across the whole canvas (curved / cylinder rooms)
+ *   #room-walls-4  or ?room=walls&walls=4   one 90° view per wall (flat 3- or 4-wall rooms)
+ *   #room-equirect or ?room=equirect        a full 360°×180° frame for the room's own 360° mapping
+ * Optional (in ?query form): front=<wall number, from 0>, vfov=<degrees>, scale=<text size, e.g. 1.5>
+ */
+function roomFromAddress() {
+  const h = location.hash.match(/^#room(?:-(pano|walls|equirect))?(?:-(\d))?$/);
+  const kind = params.get('room') || (h && (h[1] || 'pano'));
+  if (!kind || params.has('author') || location.hash === '#author') return null;
+  const num = (k) => (params.has(k) && Number.isFinite(Number(params.get(k))) ? Number(params.get(k)) : undefined);
+  return {
+    mode: kind === 'walls' ? 'walls' : 'pano',
+    walls: num('walls') ?? (h?.[2] ? Number(h[2]) : 4),
+    front: num('front'),
+    vfov: kind === 'equirect' ? 180 : num('vfov'),
+    scale: num('scale') ?? 1.4,
+  };
+}
+
+const room = roomFromAddress();
+if (room) {
+  viewer.setRoom(room);
+  document.body.classList.add('room');
+  ui.btnGyro.hidden = true;
+  // Panels (top bar, instructions, questions, home screen) sit on the front wall, enlarged.
+  const front = viewer.roomFront;
+  const st = document.body.style;
+  st.setProperty('--front-left', `${front.left * 100}%`);
+  st.setProperty('--front-width', `${front.width * 100}%`);
+  st.setProperty('--room-scale', String(room.scale));
+}
+
 // ---------------------------------------------------------------- boot
 
-// The authoring tool opens from ?author=1 or #author (hash links work in hosts that strip query strings).
-window.addEventListener('hashchange', () => { if (location.hash === '#author') location.reload(); });
+// The authoring tool opens from ?author=1 or #author (hash links work in hosts that strip query strings),
+// and room views from #room…; changing to one of those reloads into it.
+window.addEventListener('hashchange', () => { if (location.hash === '#author' || location.hash.startsWith('#room') || room) location.reload(); });
 if (params.has('author') || location.hash === '#author') {
   openBuilder();
 } else if (params.get('scenario')) {

@@ -197,6 +197,21 @@ tools/                  new-module, validate and bundle scripts
 tests/                  unit tests (npm test)
 ```
 
+## Immersive rooms (e.g. Igloo)
+
+Open the training link with a room view at the end, e.g. in an Igloo **WebView layer** stretched across the canvas:
+
+| Link ending | Room view |
+|---|---|
+| `#room` | One continuous 360° strip across the canvas (curved / cylinder rooms) |
+| `#room-walls-4` (or `-3`) | One correctly angled 90° view per wall (flat 3- or 4-wall rooms) |
+| `#room-equirect` | A full 360°×180° frame for the room's own 360° mapping (Igloo: add the **True Perspective** effect) |
+
+Optional settings in the query form (`?room=walls&walls=4&front=1&scale=1.5`): `front` is which wall faces forward
+(counting from 0 on the left), `vfov` is the vertical coverage of the strip in degrees, and `scale` enlarges the panels.
+The view stays level; dragging, scrolling or the arrow keys turn the room. Hazard markers, find tasks and pictures
+appear on the right wall; messages and questions are shown on the front wall.
+
 ## Results and privacy
 
 Results stay on the learner's device (the last 50 attempts in `localStorage`). Learners can download a CSV record.

@@ -43,8 +43,23 @@ in vec2 vNdc; out vec4 outColor;
 uniform sampler2D uTex; uniform vec3 uF, uR, uU; uniform vec2 uScale;
 uniform vec2 uCover; // horizontal / vertical coverage of the image, radians (2π × π for a full sphere)
 const float PI = 3.141592653589793;
+uniform float uMode; uniform vec4 uRoom; uniform float uYaw0;
+// Ray for this pixel. uMode 0: normal camera. 1: 360° panorama strip (uRoom.z = half the vertical
+// coverage). 2: room walls, each a 90° view side by side (uRoom.x = walls, .y = front wall, .w = vertical scale).
+vec3 rayDir() {
+  if (uMode < 0.5) return normalize(uF + uR * vNdc.x * uScale.x + uU * vNdc.y * uScale.y);
+  if (uMode < 1.5) {
+    float yaw = uYaw0 + vNdc.x * PI, pitch = vNdc.y * uRoom.z;
+    return vec3(sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch));
+  }
+  float s = (vNdc.x + 1.0) * 0.5 * uRoom.x;
+  float k = min(floor(s), uRoom.x - 1.0);
+  float lx = (s - k) * 2.0 - 1.0;
+  float yaw = uYaw0 + (k - uRoom.y) * PI * 0.5;
+  return normalize(vec3(sin(yaw), 0.0, -cos(yaw)) + vec3(cos(yaw), 0.0, sin(yaw)) * lx + vec3(0.0, 1.0, 0.0) * vNdc.y * uRoom.w);
+}
 void main() {
-  vec3 d = normalize(uF + uR * vNdc.x * uScale.x + uU * vNdc.y * uScale.y);
+  vec3 d = rayDir();
   vec2 uv = vec2(atan(d.x, -d.z) / uCover.x + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / uCover.y);
   vec2 gx = dFdx(uv), gy = dFdy(uv);
   float u2 = fract(uv.x + 0.5);
@@ -63,8 +78,23 @@ const FRAG1 = `precision highp float;
 varying vec2 vNdc;
 uniform sampler2D uTex; uniform vec3 uF, uR, uU; uniform vec2 uScale; uniform vec2 uCover;
 const float PI = 3.141592653589793;
+uniform float uMode; uniform vec4 uRoom; uniform float uYaw0;
+// Ray for this pixel. uMode 0: normal camera. 1: 360° panorama strip (uRoom.z = half the vertical
+// coverage). 2: room walls, each a 90° view side by side (uRoom.x = walls, .y = front wall, .w = vertical scale).
+vec3 rayDir() {
+  if (uMode < 0.5) return normalize(uF + uR * vNdc.x * uScale.x + uU * vNdc.y * uScale.y);
+  if (uMode < 1.5) {
+    float yaw = uYaw0 + vNdc.x * PI, pitch = vNdc.y * uRoom.z;
+    return vec3(sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch));
+  }
+  float s = (vNdc.x + 1.0) * 0.5 * uRoom.x;
+  float k = min(floor(s), uRoom.x - 1.0);
+  float lx = (s - k) * 2.0 - 1.0;
+  float yaw = uYaw0 + (k - uRoom.y) * PI * 0.5;
+  return normalize(vec3(sin(yaw), 0.0, -cos(yaw)) + vec3(cos(yaw), 0.0, sin(yaw)) * lx + vec3(0.0, 1.0, 0.0) * vNdc.y * uRoom.w);
+}
 void main() {
-  vec3 d = normalize(uF + uR * vNdc.x * uScale.x + uU * vNdc.y * uScale.y);
+  vec3 d = rayDir();
   vec2 uv = vec2(atan(d.x, -d.z) / uCover.x + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / uCover.y);
   bool outside = uv.y < 0.0 || uv.y > 1.0 || (uCover.x < 6.28 && (uv.x < 0.0 || uv.x > 1.0));
   gl_FragColor = outside ? vec4(0.07, 0.09, 0.12, 1.0) : texture2D(uTex, uv);
@@ -90,6 +120,7 @@ export class PanoViewer {
     this.anim = null;
     this.gyro = null;
     this.coverage = { hfov: 360, vfov: 180 };
+    this.room = null; // immersive room layout, see setRoom()
 
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'pano-canvas';
@@ -134,7 +165,7 @@ export class PanoViewer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-    this.u = Object.fromEntries(['uF', 'uR', 'uU', 'uScale', 'uTex', 'uCover'].map((n) => [n, gl.getUniformLocation(prog, n)]));
+    this.u = Object.fromEntries(['uF', 'uR', 'uU', 'uScale', 'uTex', 'uCover', 'uMode', 'uRoom', 'uYaw0'].map((n) => [n, gl.getUniformLocation(prog, n)]));
     gl.uniform2f(this.u.uCover, 2 * Math.PI, Math.PI);
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -319,6 +350,45 @@ export class PanoViewer {
     this.dirty = true;
   }
 
+  // ---------- immersive room ----------
+
+  /**
+   * Draws the scene for an immersive room (e.g. an Igloo) instead of a single window:
+   *   { mode: 'pano', vfov }          one continuous 360° strip across the canvas; vfov = vertical
+   *                                   coverage in degrees (default: what keeps pixels square; 180 =
+   *                                   a full equirectangular frame for the room's own 360° mapping)
+   *   { mode: 'walls', walls, front } side-by-side 90° views, one per wall (3 or 4 walls);
+   *                                   `front` = which wall (0-based) faces forward
+   * Pass null to go back to the normal view. The view stays level and zoom is fixed in a room.
+   */
+  setRoom(room) {
+    this.room = room ? { mode: room.mode === 'walls' ? 'walls' : 'pano', walls: Math.max(1, Math.min(8, Math.round(room.walls || 4))), front: room.front, vfov: room.vfov } : null;
+    if (this.room?.mode === 'walls' && !(this.room.front >= 0 && this.room.front < this.room.walls)) this.room.front = Math.floor((this.room.walls - 1) / 2);
+    this.pitch = 0;
+    this.dirty = true;
+  }
+
+  /** Geometry of the current room layout for this canvas size. */
+  #roomGeom() {
+    const r = this.room;
+    if (r.mode === 'pano') {
+      const vfov = Math.min(180, r.vfov || (360 * this.height) / Math.max(1, this.width));
+      return { vHalf: vfov / 2, pxPerDeg: this.width / 360 };
+    }
+    const wallW = this.width / r.walls;
+    return { sy: this.height / wallW, wallW, pxPerDeg: wallW / 90 };
+  }
+
+  /** Degrees per screen pixel when dragging (and the size of things pinned in the scene). */
+  get pxPerDeg() { return this.room ? this.#roomGeom().pxPerDeg : this.height / this.fov; }
+
+  /** Where the front of the room is on screen, as fractions of the width: { left, width }. */
+  get roomFront() {
+    if (!this.room) return { left: 0, width: 1 };
+    if (this.room.mode === 'pano') return { left: 0.375, width: 0.25 };
+    return { left: this.room.front / this.room.walls, width: 1 / this.room.walls };
+  }
+
   // ---------- camera ----------
 
   #basis() {
@@ -340,6 +410,7 @@ export class PanoViewer {
 
   /** Keeps zoom and direction inside the photo (matters for partial panoramas). */
   #clampView() {
+    if (this.room) { this.pitch = 0; return; } // a room view stays level
     const { hfov, vfov } = this.coverage;
     this.fov = clamp(this.fov, this.minFov, Math.min(this.maxFov, vfov));
     if (vfov >= 179) {
@@ -367,12 +438,39 @@ export class PanoViewer {
     const rect = this.canvas.getBoundingClientRect();
     const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ny = 1 - ((clientY - rect.top) / rect.height) * 2;
+    if (this.room) {
+      const g = this.#roomGeom();
+      if (this.room.mode === 'pano') return { yaw: ((this.yaw + nx * 180 + 540) % 360) - 180, pitch: ny * g.vHalf };
+      const s = ((nx + 1) / 2) * this.room.walls;
+      const k = Math.min(Math.floor(s), this.room.walls - 1);
+      const lx = (s - k) * 2 - 1, ly = ny * g.sy;
+      const yaw = this.yaw + (k - this.room.front) * 90 + Math.atan(lx) / DEG;
+      return { yaw: ((yaw + 540) % 360) - 180, pitch: Math.atan2(ly, Math.hypot(1, lx)) / DEG };
+    }
     const { f, r, u, sx, sy } = this.#basis();
     return yawPitchFromDir(norm([0, 1, 2].map((i) => f[i] + r[i] * nx * sx + u[i] * ny * sy)));
   }
 
   /** {yaw, pitch} -> container px, or null when behind the camera. */
   yawPitchToScreen(yaw, pitch) {
+    if (this.room) {
+      const g = this.#roomGeom();
+      const dy = ((yaw - this.yaw + 540) % 360) - 180; // relative to the front, -180..180
+      if (this.room.mode === 'pano') {
+        const ny = pitch / g.vHalf;
+        return { x: (dy / 360 + 0.5) * this.width, y: ((1 - ny) / 2) * this.height, visible: Math.abs(ny) <= 1.05 };
+      }
+      let rel = dy;
+      let k = Math.round(rel / 90) + this.room.front; // which wall it's on
+      if ((k < 0 || k >= this.room.walls) && this.room.walls * 90 >= 360) {
+        rel += k < 0 ? 360 : -360; // a room that wraps all the way round: try the other way
+        k = Math.round(rel / 90) + this.room.front;
+      }
+      if (k < 0 || k >= this.room.walls) return null;
+      const a = (rel - (k - this.room.front) * 90) * DEG; // angle across that wall, ±45°
+      const lx = Math.tan(a), ly = Math.tan(pitch * DEG) / Math.cos(a) / g.sy;
+      return { x: (k + (lx + 1) / 2) * g.wallW, y: ((1 - ly) / 2) * this.height, visible: Math.abs(ly) <= 1.05 };
+    }
     const d = dirFromYawPitch(yaw, pitch);
     const { f, r, u, sx, sy } = this.#basis();
     const z = dot(d, f);
@@ -404,7 +502,7 @@ export class PanoViewer {
   }
 
   #updateMarkers() {
-    const pxPerDeg = this.height / this.fov;
+    const pxPerDeg = this.pxPerDeg;
     for (const m of this.markers) {
       const p = this.yawPitchToScreen(m.yaw, m.pitch);
       if (!p) { m.el.style.visibility = 'hidden'; continue; }
@@ -437,7 +535,7 @@ export class PanoViewer {
         drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), t: performance.now(), moved: 0 };
       } else if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), fov: this.fov };
+        pinch = this.room ? null : { d: Math.hypot(a.x - b.x, a.y - b.y), fov: this.fov };
         drag = null;
       }
     });
@@ -452,8 +550,8 @@ export class PanoViewer {
         return;
       }
       if (!drag) return;
-      const k = this.fov / this.height; // degrees per pixel
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      const k = this.room ? 1 / this.pxPerDeg : this.fov / this.height; // degrees per pixel
+      const dx = e.clientX - drag.x, dy = this.room ? 0 : e.clientY - drag.y;
       const now = performance.now();
       const dt = Math.max(1, now - drag.t);
       drag.moved = Math.max(drag.moved, Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0));
@@ -485,7 +583,8 @@ export class PanoViewer {
 
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
-      this.setView({ fov: this.fov * Math.exp(e.deltaY * 0.001) });
+      if (this.room) this.setView({ yaw: this.yaw + (e.deltaX || e.deltaY) * 0.1 }); // scroll turns the room
+      else this.setView({ fov: this.fov * Math.exp(e.deltaY * 0.001) });
     }, { passive: false });
 
     el.tabIndex = 0;
@@ -597,6 +696,14 @@ export class PanoViewer {
     gl.uniform3fv(this.u.uR, r);
     gl.uniform3fv(this.u.uU, u);
     gl.uniform2f(this.u.uScale, sx, sy);
+    if (this.room) {
+      const g = this.#roomGeom();
+      gl.uniform1f(this.u.uMode, this.room.mode === 'pano' ? 1 : 2);
+      gl.uniform4f(this.u.uRoom, this.room.walls, this.room.front ?? 0, (g.vHalf ?? 0) * DEG, g.sy ?? 0);
+      gl.uniform1f(this.u.uYaw0, this.yaw * DEG);
+    } else {
+      gl.uniform1f(this.u.uMode, 0);
+    }
     gl.uniform1i(this.u.uTex, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.#updateMarkers();

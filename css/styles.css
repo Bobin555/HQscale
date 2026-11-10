@@ -364,3 +364,17 @@ body.has-banner .toast { top: auto; bottom: calc(24px + var(--safe-bottom)); }
   opacity: 0; animation: no-run-in .3s ease-out 3s forwards; }
 .no-run p { margin: 6px 0 0; color: var(--text); }
 @keyframes no-run-in { to { opacity: 1; } }
+
+/* ---------- immersive room (e.g. Igloo): panels on the front wall, enlarged ---------- */
+body.room { --front-left: 37.5%; --front-width: 25%; --room-scale: 1.4; }
+body.room .topbar { left: var(--front-left); right: auto; width: calc(var(--front-width) / var(--room-scale));
+  transform: scale(var(--room-scale)); transform-origin: 0 0; }
+body.room .banner, body.room .toast { left: calc(var(--front-left) + var(--front-width) / 2);
+  transform: translateX(-50%) scale(var(--room-scale)); transform-origin: 50% 0; top: calc(70px * var(--room-scale)); }
+body.room .card, body.room .pill-btn { left: calc(var(--front-left) + var(--front-width) / 2); animation: none;
+  transform: translateX(-50%) scale(var(--room-scale)); transform-origin: 50% 100%; }
+body.room .card { max-height: calc(70vh / var(--room-scale)); }
+body.room .banner, body.room .card { width: min(560px, calc(var(--front-width) / var(--room-scale) - 24px)); }
+body.room .screen { left: var(--front-left); right: auto; width: var(--front-width); background: rgba(15, 23, 32, .93); }
+body.room .screen-inner { zoom: var(--room-scale); }
+body.room .modal { left: var(--front-left); right: auto; width: var(--front-width); }
