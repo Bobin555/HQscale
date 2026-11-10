@@ -541,7 +541,8 @@ async function openLocalModule(fileList) {
   const files = [...fileList];
   const byName = new Map(files.map((f) => [f.name.toLowerCase(), f]));
   const modules = [];
-  for (const f of files.filter((x) => /\.json$/i.test(x.name))) {
+  // Newest module file first, so a re-saved "office-hq (1).json" wins over an older copy.
+  for (const f of files.filter((x) => /\.json$/i.test(x.name)).sort((x, y) => y.lastModified - x.lastModified)) {
     try {
       const m = JSON.parse(await f.text());
       if (m && m.scenes && m.steps) modules.push(m);
