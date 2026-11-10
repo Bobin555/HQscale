@@ -499,6 +499,8 @@ async function goHome() {
 
 async function renderModules() {
   try { ui.name.value = localStorage.getItem('hqscale.name') || ''; } catch {}
+  // Learners don't see the builder; authors open it from their own link (…#author) once.
+  try { $('#builder-link').hidden = localStorage.getItem('hqscale.author') !== '1'; } catch {}
   let list;
   try {
     list = (await fetchJson('scenarios/index.json')).modules;
@@ -562,6 +564,8 @@ let previewReturn = null;
 
 function openBuilder() {
   ui.home.hidden = true;
+  // Remember this device belongs to an author, so the home screen shows them the builder link.
+  try { localStorage.setItem('hqscale.author', '1'); } catch {}
   startBuilder({
     viewer, toast, esc,
     loadScene: async (scenario, id) => {

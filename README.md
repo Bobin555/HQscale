@@ -197,6 +197,18 @@ tools/                  new-module, validate and bundle scripts
 tests/                  unit tests (npm test)
 ```
 
+## Who can build and publish
+
+- **Learners** only see the training: the home screen has no builder link.
+- **Authors** open the builder from their own link, `…/HQscale/#author`, and bookmark it. After that, the
+  "Build a module" link also shows on their home screen on that device.
+- **Publishing** a module (uploading it and its videos to this repository) needs write access to the GitHub repo,
+  so the repo owner decides who can publish: **Settings → Collaborators**. The builder alone can't change what
+  learners see; its work stays in that person's browser until it's published.
+
+This is a convenience, not security: the site is public, so anyone who knows the builder link can open it (but not
+publish). For real role-based access, host it on Azure Static Web Apps with Entra ID sign-in and author roles.
+
 ## Immersive rooms (e.g. Igloo)
 
 Open the training link with a room view at the end, e.g. in an Igloo **WebView layer** stretched across the canvas:
