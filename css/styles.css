@@ -378,3 +378,6 @@ body.room .banner, body.room .card { width: min(560px, calc(var(--front-width) /
 body.room .screen { left: var(--front-left); right: auto; width: var(--front-width); background: rgba(15, 23, 32, .93); }
 body.room .screen-inner { zoom: var(--room-scale); }
 body.room .modal { left: var(--front-left); right: auto; width: var(--front-width); }
+
+/* run a module from files on this computer */
+.local-open { display: grid; gap: 6px; justify-items: start; margin-top: 16px; font-size: 13px; }

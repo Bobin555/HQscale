@@ -197,6 +197,18 @@ tools/                  new-module, validate and bundle scripts
 tests/                  unit tests (npm test)
 ```
 
+## Running a module from this computer (e.g. SharePoint videos)
+
+Footage that must stay private can live in SharePoint/OneDrive instead of this repository:
+
+1. Put the module file (from the builder's **Save → Download**) and its videos together in one SharePoint folder,
+   and **Sync** it (or **Add shortcut to My files**) on the computer that will run the training.
+2. Open HQscale (the link or `dist/hqscale.html`), add `#room-walls-4` etc. for an immersive room if needed, and
+   choose **📂 Open a module from this computer** → pick that folder.
+
+Videos are matched by file name and played from the computer; nothing is uploaded. It only works on computers
+that have the folder, so it suits demos and rooms. For learners on their own devices, use hosted storage (Azure Blob).
+
 ## Who can build and publish
 
 - **Learners** only see the training: the home screen has no builder link.

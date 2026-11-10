@@ -530,6 +530,56 @@ async function openScenario(file) {
   }
 }
 
+// ---------------------------------------------------------------- modules from this computer
+
+/**
+ * Runs a module whose files are on this computer (e.g. a synced SharePoint/OneDrive folder):
+ * the module's .json plus the photos/videos it uses. Media are matched by file name and shown
+ * from local blob URLs, so nothing is uploaded anywhere.
+ */
+async function openLocalModule(fileList) {
+  const files = [...fileList];
+  const byName = new Map(files.map((f) => [f.name.toLowerCase(), f]));
+  const modules = [];
+  for (const f of files.filter((x) => /\.json$/i.test(x.name))) {
+    try {
+      const m = JSON.parse(await f.text());
+      if (m && m.scenes && m.steps) modules.push(m);
+    } catch {}
+  }
+  if (!modules.length) {
+    toast('No module file found. Choose the folder (or files) that include the module .json from the builder\'s Save.', 'bad', 7000);
+    return;
+  }
+  // Several modules in one folder: run the first whose videos are all there.
+  const missingFor = (m) => Object.values(m.scenes).map((sc) => sc.media)
+    .filter((md) => (md.type === 'image' || md.type === 'video') && md.src && !/^(https?:|data:|blob:)/.test(md.src))
+    .map((md) => decodeURIComponent(md.src.split('/').pop()))
+    .filter((name) => !byName.has(name.toLowerCase()));
+  const m = modules.find((x) => !missingFor(x).length) || modules[0];
+  const missing = missingFor(m);
+  if (missing.length) {
+    toast(`"${m.title || 'This module'}" needs ${missing.length === 1 ? 'this file' : 'these files'} in the same folder: ${missing.join(', ')}`, 'bad', 9000);
+    return;
+  }
+  for (const sc of Object.values(m.scenes)) {
+    const md = sc.media;
+    if ((md.type === 'image' || md.type === 'video') && md.src && !/^(https?:|data:|blob:)/.test(md.src)) {
+      md.src = URL.createObjectURL(byName.get(decodeURIComponent(md.src.split('/').pop()).toLowerCase()));
+    }
+  }
+  const problems = validateScenario(m);
+  if (problems.length) { toast(`This module has problems:\n• ${problems.join('\n• ')}`, 'bad', 9000); return; }
+  await startScenario(m);
+}
+
+const localFolder = $('#open-local-folder'), localFiles = $('#open-local-files');
+// Folder picking isn't available everywhere (e.g. phones); pick the files instead there.
+$('#open-local').onclick = () => ('webkitdirectory' in localFolder && !isTouch ? localFolder : localFiles).click();
+for (const input of [localFolder, localFiles]) {
+  input.onchange = () => { const fl = input.files; if (fl?.length) openLocalModule(fl); input.value = ''; };
+}
+
 // ---------------------------------------------------------------- chrome buttons
 
 // In-page confirmation (native confirm() dialogs are blocked in some embedded viewers).

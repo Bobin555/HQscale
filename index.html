@@ -58,6 +58,12 @@
           <p>You're probably viewing it from Files, Mail, WhatsApp or Teams. Open the training's <strong>web link</strong> in Safari or Chrome instead.</p>
         </div>
       </div>
+      <div class="local-open">
+        <button class="btn secondary small" id="open-local" type="button">📂 Open a module from this computer</button>
+        <span class="muted">Pick the folder with the module file (.json) and its videos, e.g. a synced SharePoint folder. Nothing is uploaded.</span>
+        <input type="file" id="open-local-folder" webkitdirectory multiple hidden>
+        <input type="file" id="open-local-files" accept=".json,application/json,video/*,image/*" multiple hidden>
+      </div>
       <p class="footnote muted">Works on phones, tablets and laptops. Drag to look around, pinch or scroll to zoom.
         <a href="#author" id="builder-link" hidden>Build a module</a></p>
     </div>
