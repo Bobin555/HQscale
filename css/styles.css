@@ -123,8 +123,15 @@ a { color: var(--accent); }
 .brand h1 { margin: 0; font-size: 26px; }
 .brand p { margin: 0; }
 .field { display: grid; gap: 6px; margin-bottom: 22px; font-size: 14px; }
-.field input, .author select, .author input[type=text] { font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--line);
+.field input, .field select, .author select, .author input[type=text] { font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--line);
   border-radius: 12px; padding: 11px 12px; }
+.signed-in { margin: -8px 0 18px; font-size: 14px; }
+.signed-in a { color: var(--accent, #3fa2ff); }
+#record-fields .field { margin-bottom: 8px; }
+.record-note { font-size: 12.5px; margin: 0 0 22px; }
+.record-status { font-size: 14px; margin: 10px 0 0; }
+.record-status.good { color: var(--good); }
+.record-status.bad { color: var(--bad); }
 .section-label { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
 .module-list { display: grid; gap: 12px; }
 .module { display: grid; gap: 4px; text-align: left; border: 1px solid var(--line); background: var(--surface-solid); border-radius: var(--radius);

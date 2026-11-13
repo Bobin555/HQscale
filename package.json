@@ -5,6 +5,7 @@
   "description": "Lightweight 360\u00b0 site induction & HSE training web app (no build step).",
   "scripts": {
     "start": "npx --yes http-server . -p 8080 -c-1",
+    "dev": "node tools/dev-server.mjs",
     "validate": "node tools/validate.mjs",
     "new-module": "node tools/new-module.mjs",
     "bundle": "node tools/bundle.mjs",

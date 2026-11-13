@@ -218,10 +218,15 @@ js/builder.js           module builder (#author)
 js/hazards.js           hazard library used by the builder
 js/timeline.js          clickable video timeline (builder and watch steps)
 js/validate.js          module checks, shared by the app and npm run validate
+js/reporting.js         sends results to the training records API (off when there's no API)
+js/records.js, admin.js training records dashboard (admin.html)
+api/                    training records API (Azure Functions) and storage (Table Storage / file / memory)
+config.json             office list shown to learners
+staticwebapp.config.json  Azure sign-in and admin-only routes
 scenarios/*.json        training content
 media/                  your 360° photos / videos
 sw.js                   offline support (network-first cache)
-tools/                  new-module, validate and bundle scripts
+tools/                  new-module, validate, bundle and dev-server scripts
 tests/                  unit tests (npm test)
 ```
 
@@ -300,10 +305,55 @@ Optional settings in the query form (`?room=walls&walls=4&front=1&scale=1.5`): `
 The view stays level; dragging, scrolling or the arrow keys turn the room. Hazard markers, find tasks and pictures
 appear on the right wall; messages and questions are shown on the front wall.
 
+## Training records (who has completed the training)
+
+Where the site has the results API (`api/`, deployed with Azure Static Web Apps), every attempt is recorded centrally
+and admins see it on **`/admin.html`**:
+
+- **Totals**: how many people started, completed and passed, and the average score.
+- **Completion by office**: completed vs started per office, with the average score.
+- **People**: name, email, office, module, status (passed / not passed / not finished), best score, when they completed
+  it, time taken and number of attempts. Click a row for their answers and every attempt.
+- **Filters** by module, office, status, date range and name/email, and **Download CSV** (opens in Excel) of what's shown.
+
+What learners see: before starting, they choose their **office** (the list is in `config.json`; edit it to match your
+offices). With sign-in, their name and email come from their work account; without it they type their name and the
+record is marked *unverified*. The home screen says that name, office, score and completion time are recorded, and the
+results screen confirms "Your result has been recorded". If they're offline, the result is kept on the device and sent
+next time they open the training. Builder previews are never recorded.
+
+On sites without the API (GitHub Pages, the single-file build) none of this appears and the app works as before.
+
+### Try it on your computer
+
+```bash
+npm run dev            # http://localhost:8787 — training; http://localhost:8787/admin.html — records
+```
+
+Records go to `.dev-data/attempts.json` (not committed). There's no sign-in locally, so the dashboard is open to anyone
+on that computer. To pretend to be signed in: `DEV_USER="Sam Taylor <sam@example.com>" DEV_ROLES=admin npm run dev`.
+
+### Set it up on Azure (for IT)
+
+1. Create an **Azure Static Web App** (Standard plan, needed for Entra ID sign-in) from this repository: app location
+   `/`, API location `api`, no build output.
+2. Create a **Storage account** and add its connection string to the Static Web App's environment variables as
+   `HQSCALE_STORAGE`. Records go to the table `attempts` (created automatically). Table storage costs pennies a month.
+3. Sign-in: `staticwebapp.config.json` already requires a signed-in work account for the whole site and only lets the
+   **admin** role open `/admin.html` and read results. Register an Entra ID app and add `AZURE_CLIENT_ID` /
+   `AZURE_CLIENT_SECRET` as described in Microsoft's "Custom authentication in Azure Static Web Apps", so only your
+   tenant can sign in.
+4. Give HR/HSE admins the role: Static Web App → **Role management → Invite**, role name `admin`. (Or map an Entra ID
+   group to the role with a role-assignment function.)
+
+The API double-checks the role itself, and learners can only record and finish their own attempts. Records hold name,
+work email, office, scores and answers: tell staff in your privacy notice and agree how long to keep them (delete rows
+from the table, or set a retention rule).
+
 ## Results and privacy
 
-Results stay on the learner's device (the last 50 attempts in `localStorage`). Learners can download a CSV record.
-Nothing is sent to a server. To report completions centrally, see the roadmap.
+On the learner's device, the last 50 attempts are kept in `localStorage` and learners can download a CSV record. Results
+are only sent to a server where the training records API is set up (see above).
 
 ## Roadmap
 
@@ -314,7 +364,7 @@ Nothing is sent to a server. To report completions centrally, see the roadmap.
 - **Azure hosting**: Azure Static Web Apps with Entra ID sign-in and an "author" role (only authors can open the
   builder and publish), Azure Blob Storage for videos.
 - **Central publishing**: a **Publish** button in the builder instead of downloading and uploading module files.
-- **Central reporting**: completion records for HR, or SCORM/xAPI packages for an existing LMS.
+- **LMS export**: SCORM/xAPI packages for an existing LMS (central training records are built in, see above).
 - **WebXR**: a VR/room button for headsets and Igloo's WebXR integration.
 - **"Add video from a web link"** in the builder, with a check that the host allows it.
 - A floor-plan step to jump between scenes, audio narration, and multiple languages.

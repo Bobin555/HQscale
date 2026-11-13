@@ -1,0 +1,19 @@
+{
+  "routes": [
+    { "route": "/.auth/login/github", "statusCode": 404 },
+    { "route": "/.auth/login/twitter", "statusCode": 404 },
+    { "route": "/admin.html", "allowedRoles": ["admin"] },
+    { "route": "/js/admin.js", "allowedRoles": ["admin"] },
+    { "route": "/api/attempts", "methods": ["GET"], "allowedRoles": ["admin"] },
+    { "route": "/api/*", "allowedRoles": ["authenticated"] },
+    { "route": "/*", "allowedRoles": ["authenticated"] }
+  ],
+  "responseOverrides": {
+    "401": { "redirect": "/.auth/login/aad?post_login_redirect_uri=.referrer", "statusCode": 302 }
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin"
+  },
+  "mimeTypes": { ".json": "application/json", ".webmanifest": "application/manifest+json" }
+}

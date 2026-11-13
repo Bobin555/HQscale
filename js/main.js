@@ -3,6 +3,7 @@ import { paintPlaceholder, propElement, sameMoment } from './placeholder.js';
 import { validateScenario } from './validate.js';
 import { startBuilder } from './builder.js';
 import { createTimeline } from './timeline.js';
+import { Reporter } from './reporting.js';
 
 const $ = (sel) => document.querySelector(sel);
 const params = new URLSearchParams(location.search);
@@ -144,8 +145,16 @@ async function loadScenario(url) {
 async function startScenario(scenario) {
   currentScenario = scenario;
   currentSceneId = null;
-  run = { scenario, index: 0, results: [], startedAt: Date.now(), name: ui.name.value.trim(), cleanup: null };
-  try { localStorage.setItem('hqscale.name', run.name); } catch {}
+  const name = reporter.user?.name || ui.name.value.trim();
+  run = { scenario, index: 0, results: [], startedAt: Date.now(), name, cleanup: null };
+  try { localStorage.setItem('hqscale.name', ui.name.value.trim()); } catch {}
+  // Record the attempt centrally (not for builder previews).
+  if (reporter.enabled && !previewReturn) {
+    run.report = reporter.start({
+      moduleId: scenario.id || slugify(scenario.title), moduleTitle: scenario.title || 'Untitled module',
+      office: $('#learner-office').value, name, device: room ? 'room' : isTouch ? 'mobile' : 'desktop',
+    });
+  }
   ui.home.hidden = true;
   ui.results.hidden = true;
   ui.topbar.hidden = false;
@@ -453,7 +462,23 @@ function finish() {
       <button class="btn secondary" id="res-home">${previewReturn ? 'Back to builder' : 'Back to modules'}</button>
     </div>`;
   ui.results.hidden = false;
-  $('#res-retry').onclick = () => startScenario(s);
+  if (run.report) {
+    const status = document.createElement('p');
+    status.className = 'record-status muted';
+    status.textContent = 'Recording your result…';
+    $('#results-inner .score-hero').append(status);
+    reporter.complete(run.report, {
+      score: pct, passed: pass, correct, total: scored.length,
+      durationSec: Math.round((Date.now() - run.startedAt) / 1000),
+      answers: scored.map((r) => ({ title: r.title, correct: r.correct, detail: r.detail })),
+    }).then((r) => {
+      status.className = `record-status ${r.state === 'recorded' ? 'good' : r.state === 'queued' ? 'muted' : 'bad'}`;
+      status.textContent = r.state === 'recorded' ? '✓ Your result has been recorded.'
+        : r.state === 'queued' ? 'You seem to be offline. Your result is saved and will be sent next time you open the training.'
+          : `Your result couldn't be recorded: ${r.message}`;
+    });
+  }
+  $('#res-retry').onclick = () => { if (readyToRecord()) startScenario(s); else goHome(); };
   $('#res-home').onclick = goHome;
   $('#res-csv').onclick = () => downloadCsv(record);
   // Some hosts (e.g. sandboxed embeds) block file downloads; builds for them set this flag.
@@ -513,7 +538,7 @@ async function renderModules() {
     btn.className = 'module';
     btn.innerHTML = `<h3>${esc(m.title)}</h3><p>${esc(m.description || '')}</p>
       <span class="meta">${m.minutes ? `~${m.minutes} min · ` : ''}Start →</span>`;
-    btn.onclick = () => openScenario(m.file);
+    btn.onclick = () => { if (readyToRecord()) openScenario(m.file); };
     ui.moduleList.append(btn);
   }
 }
@@ -527,6 +552,45 @@ async function openScenario(file) {
     ui.loading.hidden = true;
     ui.home.hidden = false;
     toast(err.message, 'bad', 6000);
+  }
+}
+
+// ---------------------------------------------------------------- recording results centrally
+
+const reporter = new Reporter();
+const slugify = (s) => String(s || 'module').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'module';
+
+/** Where results are recorded, the learner's name (unless signed in) and office are needed first. */
+function readyToRecord() {
+  if (!reporter.enabled) return true;
+  const need = !reporter.user && !ui.name.value.trim() ? ui.name : !$('#learner-office').value ? $('#learner-office') : null;
+  if (!need) return true;
+  ui.home.hidden = false;
+  toast(need === ui.name ? 'Enter your name so your result can be recorded.' : 'Choose your office so your result can be recorded.', 'bad', 4000);
+  need.focus();
+  return false;
+}
+
+/** Shows the office (and sign-in) fields on sites that record results. */
+async function setUpRecording() {
+  await reporter.init();
+  if (!reporter.enabled) return;
+  let offices = [];
+  try { offices = (await fetchJson('config.json')).offices || []; } catch {}
+  const sel = $('#learner-office');
+  sel.append(...offices.map((o) => new Option(o, o)));
+  if (!offices.length) sel.replaceWith(Object.assign(document.createElement('input'), { id: 'learner-office', type: 'text', placeholder: 'e.g. London' }));
+  try { const saved = localStorage.getItem('hqscale.office'); if (saved) $('#learner-office').value = saved; } catch {}
+  $('#learner-office').addEventListener('change', (e) => { try { localStorage.setItem('hqscale.office', e.target.value); } catch {} });
+  $('#record-fields').hidden = false;
+  if (reporter.user) {
+    $('#name-field').hidden = true;
+    const si = $('#signed-in');
+    si.hidden = false;
+    si.textContent = `Signed in as ${reporter.user.name}`;
+    if (reporter.isAdmin) si.insertAdjacentHTML('beforeend', ' · <a href="admin.html">Training records</a>');
+  } else {
+    $('#name-hint').textContent = '(needed for your training record)';
   }
 }
 
@@ -571,6 +635,7 @@ async function openLocalModule(fileList) {
   }
   const problems = validateScenario(m);
   if (problems.length) { toast(`This module has problems:\n• ${problems.join('\n• ')}`, 'bad', 9000); return; }
+  if (!readyToRecord()) return;
   await startScenario(m);
 }
 
@@ -681,6 +746,7 @@ if (params.has('author') || location.hash === '#author') {
   openScenario(params.get('scenario'));
 } else {
   renderModules();
+  setUpRecording();
 }
 
 // Offline support. Skipped in single-file builds, and guarded because sandboxed frames

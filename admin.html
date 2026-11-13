@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Training Records</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f4f2; --surface-1: #fcfcfb; --line: #e2e1dc; --grid: #ecebe7;
+      --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #77766f;
+      --series-1: #2a78d6; --track: #e6edf6;
+      --good: #138a36; --bad: #c62828; --warn: #a86b00;
+      --focus: #2a78d6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #111110; --surface-1: #1a1a19; --line: #2e2e2c; --grid: #262624;
+        --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #9a998f;
+        --series-1: #3987e5; --track: #22303f;
+        --good: #4cc274; --bad: #ef6b6b; --warn: #e0a43a;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #111110; --surface-1: #1a1a19; --line: #2e2e2c; --grid: #262624;
+      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #9a998f;
+      --series-1: #3987e5; --track: #22303f;
+      --good: #4cc274; --bad: #ef6b6b; --warn: #e0a43a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text-primary);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 20px; }
+    header h1 { margin: 0; font-size: 22px; }
+    header .who { color: var(--text-secondary); font-size: 14px; margin-left: auto; }
+    a { color: var(--series-1); }
+    .muted { color: var(--text-muted); }
+    .panel { background: var(--surface-1); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 16px; }
+    .filters label { display: grid; gap: 4px; font-size: 12.5px; color: var(--text-secondary); }
+    .filters select, .filters input, button { font: inherit; font-size: 14px; color: var(--text-primary); background: var(--surface-1);
+      border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; min-height: 36px; }
+    .filters input[type=search] { min-width: 150px; }
+    .filters label.grow { flex: 1; }
+    button { cursor: pointer; }
+    button.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .filters .spacer { flex: 1; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .tile .label { font-size: 13px; color: var(--text-secondary); }
+    .tile .value { font-size: 32px; font-weight: 650; letter-spacing: -.01em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .tile .sub { font-size: 13px; color: var(--text-muted); }
+    h2 { font-size: 15px; margin: 0 0 4px; }
+    .grid2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+    /* Offices: one bar per office, completed people, on a track of people who started. */
+    .bars { display: grid; gap: 10px; margin-top: 12px; }
+    .bar-row { display: grid; grid-template-columns: minmax(90px, 160px) minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 14px; }
+    .bar-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .track { position: relative; height: 18px; background: var(--track); border-radius: 4px; }
+    .fill { position: absolute; inset: 0 auto 0 0; background: var(--series-1); border-radius: 4px; min-width: 2px; }
+    .bar-row .val { color: var(--text-secondary); font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+    .bar-row:hover .track, .bar-row:focus-visible .track { outline: 1px solid var(--text-muted); outline-offset: 1px; }
+    .legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-secondary); margin-top: 6px; }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+    .tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--line);
+      border-radius: 10px; padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 24px rgba(0,0,0,.18); max-width: 260px; }
+    .table-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 10px; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+    th { font-size: 12.5px; color: var(--text-secondary); font-weight: 600; cursor: pointer; user-select: none; }
+    th[aria-sort="ascending"]::after { content: " ▲"; font-size: 10px; }
+    th[aria-sort="descending"]::after { content: " ▼"; font-size: 10px; }
+    td.num { font-variant-numeric: tabular-nums; text-align: right; }
+    th.num { text-align: right; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: var(--grid); }
+    .status { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+    .status.passed { color: var(--good); }
+    .status.failed { color: var(--bad); }
+    .status.started { color: var(--warn); }
+    .tag { font-size: 11px; color: var(--text-muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; margin-left: 6px; }
+    .detail td { white-space: normal; background: var(--bg); cursor: default; }
+    .detail ul { margin: 4px 0; padding-left: 18px; columns: 2 280px; }
+    .detail li.bad { color: var(--bad); }
+    .notice { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-1); margin-bottom: 16px; }
+    .notice.bad { border-color: var(--bad); }
+    @media (max-width: 640px) {
+      .bar-row { grid-template-columns: minmax(70px, 110px) minmax(0, 1fr); }
+      .bar-row .val { grid-column: 2; }
+      header .who { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="icons/icon.svg" alt="" width="32" height="32">
+      <h1>Training records</h1>
+      <span class="who" id="who"></span>
+    </header>
+
+    <div id="notice" class="notice" hidden></div>
+
+    <div class="filters" role="search">
+      <label>Module <select id="f-module"><option value="">All modules</option></select></label>
+      <label>Office <select id="f-office"><option value="">All offices</option></select></label>
+      <label>Status
+        <select id="f-status">
+          <option value="">Everyone</option>
+          <option value="completed">Completed</option>
+          <option value="passed">Passed</option>
+          <option value="failed">Not passed</option>
+          <option value="started">Started, not finished</option>
+        </select>
+      </label>
+      <label>From <input type="date" id="f-from"></label>
+      <label>To <input type="date" id="f-to"></label>
+      <label class="grow">Search <input type="search" id="f-search" placeholder="Name or email"></label>
+      <button id="btn-refresh" type="button">Refresh</button>
+      <button id="btn-csv" type="button" class="primary">Download CSV</button>
+    </div>
+
+    <section class="tiles" aria-label="Summary">
+      <div class="panel tile"><div class="label">Started the training</div><div class="value" id="t-started">–</div><div class="sub">people</div></div>
+      <div class="panel tile"><div class="label">Completed</div><div class="value" id="t-completed">–</div><div class="sub" id="t-completed-sub">&nbsp;</div></div>
+      <div class="panel tile"><div class="label">Passed</div><div class="value" id="t-passed">–</div><div class="sub" id="t-passed-sub">&nbsp;</div></div>
+      <div class="panel tile"><div class="label">Average score</div><div class="value" id="t-avg">–</div><div class="sub">best score per person</div></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel" aria-labelledby="h-office">
+        <h2 id="h-office">Completion by office</h2>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Completed</span><span><i style="background:var(--track)"></i>Started, not finished</span></div>
+        <div class="bars" id="office-bars"></div>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="h-people">
+      <div class="table-head">
+        <h2 id="h-people">People</h2>
+        <span class="muted" id="people-count"></span>
+        <span class="muted" style="font-size:13px">One row per person and module (their best result). Click a row for answers and all attempts.</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr id="people-head"></tr></thead>
+          <tbody id="people-body"><tr><td colspan="10" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <div class="tip" id="tip" hidden></div>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

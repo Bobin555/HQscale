@@ -45,10 +45,19 @@
           <p class="muted">360° site induction &amp; HSE training</p>
         </div>
       </div>
-      <label class="field">
-        <span>Your name <span class="muted">(optional, shown on your results)</span></span>
+      <p id="signed-in" class="signed-in muted" hidden></p>
+      <label class="field" id="name-field">
+        <span>Your name <span class="muted" id="name-hint">(optional, shown on your results)</span></span>
         <input id="learner-name" type="text" autocomplete="name" placeholder="e.g. Sam Taylor">
       </label>
+      <!-- Shown only where results are recorded centrally (the site has the results API). -->
+      <div id="record-fields" hidden>
+        <label class="field">
+          <span>Your office</span>
+          <select id="learner-office"><option value="">Choose your office…</option></select>
+        </label>
+        <p class="record-note muted">Your name, office, score and completion time are recorded for training records.</p>
+      </div>
       <h2 class="section-label">Choose a module</h2>
       <div id="module-list" class="module-list">
         <p class="muted">Loading modules…</p>
