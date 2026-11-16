@@ -1,3 +1,5 @@
 {
-  "offices": ["London", "Manchester", "Birmingham", "Edinburgh", "Remote / other"]
+  "offices": ["London", "Manchester", "Birmingham", "Edinburgh", "Remote / other"],
+  "resultsForm": "",
+  "_help": "resultsForm: paste your Microsoft Forms pre-filled link here (see README, 'Collecting results with Microsoft Forms'). Leave it empty to turn results collection off."
 }

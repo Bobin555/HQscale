@@ -129,6 +129,10 @@ a { color: var(--accent); }
 .signed-in a { color: var(--accent, #3fa2ff); }
 #record-fields .field { margin-bottom: 8px; }
 .record-note { font-size: 12.5px; margin: 0 0 22px; }
+.submit-box { border: 2px solid var(--accent, #3fa2ff); border-radius: var(--radius, 14px); padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 6px; justify-items: start; }
+.submit-box p { margin: 0 0 6px; }
+.submit-box.done { border-color: var(--good); }
+.submit-box a.btn { text-decoration: none; }
 .record-status { font-size: 14px; margin: 10px 0 0; }
 .record-status.good { color: var(--good); }
 .record-status.bad { color: var(--bad); }

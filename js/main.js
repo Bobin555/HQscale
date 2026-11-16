@@ -4,6 +4,7 @@ import { validateScenario } from './validate.js';
 import { startBuilder } from './builder.js';
 import { createTimeline } from './timeline.js';
 import { Reporter } from './reporting.js';
+import { formLink, isFormTemplate, formDate } from './forms.js';
 
 const $ = (sel) => document.querySelector(sel);
 const params = new URLSearchParams(location.search);
@@ -146,7 +147,7 @@ async function startScenario(scenario) {
   currentScenario = scenario;
   currentSceneId = null;
   const name = reporter.user?.name || ui.name.value.trim();
-  run = { scenario, index: 0, results: [], startedAt: Date.now(), name, cleanup: null };
+  run = { scenario, index: 0, results: [], startedAt: Date.now(), name, office: $('#learner-office')?.value || '', cleanup: null };
   try { localStorage.setItem('hqscale.name', ui.name.value.trim()); } catch {}
   // Record the attempt centrally (not for builder previews).
   if (reporter.enabled && !previewReturn) {
@@ -456,12 +457,28 @@ function finish() {
         <span><strong>${esc(r.title)}</strong><br><span class="muted">${esc(r.detail)}</span></span></li>`).join('')}
     </ul>
     <div class="actions-row">
-      <button class="btn" id="res-retry">Try again</button>
+      <button class="btn${resultsForm && !previewReturn ? ' secondary' : ''}" id="res-retry">Try again</button>
       <button class="btn secondary" id="res-csv">Download record (CSV)</button>
       <button class="btn secondary" id="res-copy">Copy results</button>
       <button class="btn secondary" id="res-home">${previewReturn ? 'Back to builder' : 'Back to modules'}</button>
     </div>`;
   ui.results.hidden = false;
+  if (resultsForm && !previewReturn) {
+    const link = formLink(resultsForm, {
+      NAME: run.name, OFFICE: run.office, MODULE: s.title || s.id, SCORE: pct, RESULT: pass ? 'Passed' : 'Not passed',
+      CORRECT: `${correct} of ${scored.length}`, MINUTES: mins, COMPLETED: formDate(),
+    });
+    const box = document.createElement('div');
+    box.className = 'submit-box';
+    box.innerHTML = `<strong>Last step: submit your result</strong>
+      <p>Your training is only recorded when you press <strong>Submit</strong> on the form. Your details are already filled in.</p>
+      <a class="btn" id="res-submit" href="${esc(link)}" target="_blank" rel="noopener">Submit your result ↗</a>`;
+    $('#results-inner .score-hero').after(box);
+    $('#res-submit').addEventListener('click', () => {
+      box.classList.add('done');
+      box.querySelector('p').innerHTML = 'The form opened in a new tab. Press <strong>Submit</strong> there to finish. Didn\'t open? Click the button again.';
+    });
+  }
   if (run.report) {
     const status = document.createElement('p');
     status.className = 'record-status muted';
@@ -560,9 +577,12 @@ async function openScenario(file) {
 const reporter = new Reporter();
 const slugify = (s) => String(s || 'module').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'module';
 
+let resultsForm = null; // Microsoft Forms pre-filled link template from config.json
+const recording = () => reporter.enabled || !!resultsForm;
+
 /** Where results are recorded, the learner's name (unless signed in) and office are needed first. */
 function readyToRecord() {
-  if (!reporter.enabled) return true;
+  if (!recording()) return true;
   const need = !reporter.user && !ui.name.value.trim() ? ui.name : !$('#learner-office').value ? $('#learner-office') : null;
   if (!need) return true;
   ui.home.hidden = false;
@@ -573,16 +593,19 @@ function readyToRecord() {
 
 /** Shows the office (and sign-in) fields on sites that record results. */
 async function setUpRecording() {
+  let config = {};
+  try { config = await fetchJson('config.json'); } catch {}
+  if (isFormTemplate(config.resultsForm)) resultsForm = config.resultsForm;
   await reporter.init();
-  if (!reporter.enabled) return;
-  let offices = [];
-  try { offices = (await fetchJson('config.json')).offices || []; } catch {}
+  if (!recording()) return;
+  const offices = Array.isArray(config.offices) ? config.offices : [];
   const sel = $('#learner-office');
   sel.append(...offices.map((o) => new Option(o, o)));
   if (!offices.length) sel.replaceWith(Object.assign(document.createElement('input'), { id: 'learner-office', type: 'text', placeholder: 'e.g. London' }));
   try { const saved = localStorage.getItem('hqscale.office'); if (saved) $('#learner-office').value = saved; } catch {}
   $('#learner-office').addEventListener('change', (e) => { try { localStorage.setItem('hqscale.office', e.target.value); } catch {} });
   $('#record-fields').hidden = false;
+  if (!reporter.enabled) $('.record-note').textContent = 'At the end you\'ll submit your name, office and score on a short form for your training record.';
   if (reporter.user) {
     $('#name-field').hidden = true;
     const si = $('#signed-in');

@@ -14,7 +14,7 @@ const fragment = args.includes('--fragment');
 const out = resolve(root, args.find((a) => !a.startsWith('--')) || 'dist/hqscale.html');
 
 // Modules are concatenated in dependency order, so imports/exports can be dropped.
-const js = ['js/viewer.js', 'js/placeholder.js', 'js/hazards.js', 'js/validate.js', 'js/timeline.js', 'js/builder.js', 'js/reporting.js', 'js/main.js']
+const js = ['js/viewer.js', 'js/placeholder.js', 'js/hazards.js', 'js/validate.js', 'js/timeline.js', 'js/builder.js', 'js/reporting.js', 'js/forms.js', 'js/main.js']
   .map((f) => read(f).replace(/^import .*$/gm, '').replace(/^export /gm, ''))
   .join('\n');
 
@@ -29,7 +29,7 @@ if (dupes.length) {
 }
 
 const index = JSON.parse(read('scenarios/index.json'));
-const embed = { 'scenarios/index.json': index };
+const embed = { 'scenarios/index.json': index, 'config.json': JSON.parse(read('config.json')) };
 for (const m of index.modules) embed[m.file] = JSON.parse(read(m.file));
 
 const safe = (s) => s.replace(/<\/script/gi, '<\\/script');

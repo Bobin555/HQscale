@@ -305,6 +305,44 @@ Optional settings in the query form (`?room=walls&walls=4&front=1&scale=1.5`): `
 The view stays level; dragging, scrolling or the arrow keys turn the room. Hazard markers, find tasks and pictures
 appear on the right wall; messages and questions are shown on the front wall.
 
+## Collecting results with Microsoft Forms (no Azure needed)
+
+The simplest way to see who has done the training. At the end of a module the learner presses **Submit your result**;
+a Microsoft Form opens with their name, office, module, score, pass/fail and date already filled in, and they press
+**Submit**. Every response lands in the form's Excel sheet, where you can sort, filter and pivot by office.
+Works from the GitHub Pages link and the single-file HTML.
+
+**Set up (about 10 minutes, once)**
+
+1. In [Microsoft Forms](https://forms.office.com) create a form, e.g. "HQscale training record", with these **Text**
+   questions (any order; leave out ones you don't want): *Name*, *Office*, *Module*, *Score (%)*, *Result*,
+   *Correct answers*, *Minutes*, *Completed*.
+2. **Settings**: *Only people in my organisation can respond* and *Record name*. Forms then also records each
+   person's verified work name and email, so a typed name can't be faked.
+3. **…** (top right) → **Get pre-filled URL** → **Start**. In each question type the matching word in capitals:
+
+   | Question | Type |
+   |---|---|
+   | Name | `NAME` |
+   | Office | `OFFICE` |
+   | Module | `MODULE` |
+   | Score (%) | `SCORE` |
+   | Result | `RESULT` |
+   | Correct answers | `CORRECT` |
+   | Minutes | `MINUTES` |
+   | Completed | `COMPLETED` |
+
+4. **Copy link**, and paste it into `config.json` as `"resultsForm"`. Edit `"offices"` in the same file to your offices.
+   Commit the change (GitHub: open `config.json` → ✏️ → paste → **Commit changes**).
+5. To see results: open the form → **Responses** → **Open results in Excel**.
+
+When a form link is set, learners must enter their name and choose their office before starting. Leave
+`"resultsForm"` empty to turn it off. Rebuild the single-file version (`npm run bundle`) after changing `config.json`.
+
+Limits: the result only counts if the learner presses Submit, and they could change the pre-filled answers before
+submitting. Use the Responses' *Completion time* and recorded email to spot oddities, or move to the Azure version below
+for automatic, tamper-proof records.
+
 ## Training records (who has completed the training)
 
 Where the site has the results API (`api/`, deployed with Azure Static Web Apps), every attempt is recorded centrally
