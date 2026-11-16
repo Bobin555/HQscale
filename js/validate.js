@@ -13,6 +13,11 @@ export function validateScenario(s) {
   if (!s.scenes || typeof s.scenes !== 'object' || !Object.keys(s.scenes).length) add('module', 'needs at least one scene in "scenes"');
   if (!Array.isArray(s.steps) || !s.steps.length) add('module', 'needs at least one step in "steps"');
   if (s.passMark != null && !(s.passMark >= 0 && s.passMark <= 1)) add('module', '"passMark" must be between 0 and 1 (e.g. 0.8 for 80%)');
+  const formOk = (u) => { try { return /^https:\/\/\S+\?\S*=(NAME|OFFICE|MODULE|SCORE|RESULT|CORRECT|MINUTES|COMPLETED)\b/i.test(decodeURIComponent(String(u)).replace(/[{}[\]]/g, '')); } catch { return false; } };
+  if (s.resultsForm != null && !formOk(s.resultsForm))
+    add('module', '"resultsForm" must be a Microsoft Forms pre-filled link with answers typed as NAME, OFFICE, SCORE etc.');
+  if (s.offices != null && !(Array.isArray(s.offices) && s.offices.every((o) => typeof o === 'string' && o.trim())))
+    add('module', '"offices" must be a list of office names, e.g. ["London", "Leeds"]');
 
   for (const [id, scene] of Object.entries(s.scenes || {})) {
     const where = `scene "${id}"`;

@@ -69,6 +69,9 @@ export function startBuilder(api) {
   function exportable() {
     const m = clone(draft);
     m.id = moduleId();
+    if (typeof m.offices === 'string') m.offices = m.offices.split(',').map((o) => o.trim()).filter(Boolean);
+    if (!m.offices?.length) delete m.offices;
+    if (!String(m.resultsForm || '').trim()) delete m.resultsForm; else m.resultsForm = m.resultsForm.trim();
     for (const sc of Object.values(m.scenes)) {
       if (sc.media.file) sc.media.src = `media/${m.id}/${sc.media.file}`;
       delete sc.media.file;
@@ -589,6 +592,12 @@ export function startBuilder(api) {
         <input data-scope="module" data-f="title" value="${esc(draft.title)}" placeholder="e.g. Bridge site safety walk"></label>
       <label class="bld-field"><span>Short description <em>(shown on the home screen)</em></span>
         <input data-scope="module" data-f="description" value="${esc(draft.description)}" placeholder="What learners will practise"></label>
+      <details class="bld-more" ${draft.resultsForm ? 'open' : ''}><summary>Collect results with Microsoft Forms <em>(optional)</em></summary>
+        <label class="bld-field"><span>Pre-filled form link <em>(Forms → … → Get pre-filled URL, answers typed as NAME, OFFICE, MODULE, SCORE, RESULT, COMPLETED)</em></span>
+          <input data-scope="module" data-f="resultsForm" value="${esc(draft.resultsForm || '')}" placeholder="https://forms.office.com/Pages/ResponsePage.aspx?id=…"></label>
+        <label class="bld-field"><span>Offices learners choose from <em>(comma-separated; empty = the site's list)</em></span>
+          <input data-scope="module" data-f="offices" value="${esc(Array.isArray(draft.offices) ? draft.offices.join(', ') : draft.offices || '')}" placeholder="London, Manchester, Leeds"></label>
+      </details>
 
       <h3 class="bld-h">1 · 360° scenes</h3>
       <div class="bld-scenes">

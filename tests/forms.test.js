@@ -22,3 +22,12 @@ test('fills in the learner details and leaves other answers alone', () => {
 test('date format Excel understands', () => {
   assert.equal(formDate(new Date(2026, 10, 6, 9, 5)), '2026-11-06 09:05');
 });
+
+test('modules can carry their own form link and offices', async () => {
+  const { validateScenario } = await import('../js/validate.js');
+  const { readFileSync } = await import('node:fs');
+  const base = JSON.parse(readFileSync(new URL('../scenarios/hq-induction.json', import.meta.url)));
+  assert.deepEqual(validateScenario({ ...base, resultsForm: tpl, offices: ['London', 'Leeds'] }), []);
+  assert.equal(validateScenario({ ...base, resultsForm: 'https://forms.office.com/r/abc' }).length, 1);
+  assert.equal(validateScenario({ ...base, offices: 'London' }).length, 1);
+});

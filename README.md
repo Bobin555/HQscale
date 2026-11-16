@@ -199,6 +199,8 @@ More options the builder writes for you:
 | scene `media` | `"start": 3.5, "end": 40` | trim a video: only this part plays |
 | scene `media` | `"hfov": 180, "vfov": 90` | coverage of a partial panorama (normally worked out automatically) |
 | any step on a video scene | `"videoTime": 12.4` | the video is frozen on this moment during the step |
+| module | `"resultsForm": "https://forms.office.com/…&r1=NAME…"` | Microsoft Forms pre-filled link for results (see "Collecting results with Microsoft Forms") |
+| module | `"offices": ["Leeds", "Bristol"]` | offices learners choose from for this module |
 | any step | `"showAllProps": true` | also show pictures placed by other steps on the same frame |
 | target / hotspot | `"prop": { "kind": "puddle", "scale": 1.2, "rotate": 0, "aspect": 1, "flat": 60, "flip": false }` | a picture from the hazard library placed in the scene (size, rotation, width, lie flat, mirror) |
 
@@ -335,6 +337,14 @@ Works from the GitHub Pages link and the single-file HTML.
 4. **Copy link**, and paste it into `config.json` as `"resultsForm"`. Edit `"offices"` in the same file to your offices.
    Commit the change (GitHub: open `config.json` → ✏️ → paste → **Commit changes**).
 5. To see results: open the form → **Responses** → **Open results in Excel**.
+
+**Modules kept in SharePoint** can carry their own link instead: in the builder, open **Collect results with Microsoft
+Forms** and paste the link (and, optionally, your office list). It's saved in the module's .json, so a module opened with
+"Open a module from this computer" from a synced SharePoint folder sends results to that form, with no change to the
+app itself. A module's own link and offices take priority over `config.json`.
+
+**Keep the results in SharePoint too**: create the form from your SharePoint site's document library
+(**New → Forms for Excel**). The responses workbook then lives in that library and fills in as people submit.
 
 When a form link is set, learners must enter their name and choose their office before starting. Leave
 `"resultsForm"` empty to turn it off. Rebuild the single-file version (`npm run bundle`) after changing `config.json`.

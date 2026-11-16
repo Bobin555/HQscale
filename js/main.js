@@ -144,6 +144,7 @@ async function loadScenario(url) {
 }
 
 async function startScenario(scenario) {
+  if (!readyToRecord(scenario)) return;
   currentScenario = scenario;
   currentSceneId = null;
   const name = reporter.user?.name || ui.name.value.trim();
@@ -457,14 +458,14 @@ function finish() {
         <span><strong>${esc(r.title)}</strong><br><span class="muted">${esc(r.detail)}</span></span></li>`).join('')}
     </ul>
     <div class="actions-row">
-      <button class="btn${resultsForm && !previewReturn ? ' secondary' : ''}" id="res-retry">Try again</button>
+      <button class="btn${formFor(s) && !previewReturn ? ' secondary' : ''}" id="res-retry">Try again</button>
       <button class="btn secondary" id="res-csv">Download record (CSV)</button>
       <button class="btn secondary" id="res-copy">Copy results</button>
       <button class="btn secondary" id="res-home">${previewReturn ? 'Back to builder' : 'Back to modules'}</button>
     </div>`;
   ui.results.hidden = false;
-  if (resultsForm && !previewReturn) {
-    const link = formLink(resultsForm, {
+  if (formFor(s) && !previewReturn) {
+    const link = formLink(formFor(s), {
       NAME: run.name, OFFICE: run.office, MODULE: s.title || s.id, SCORE: pct, RESULT: pass ? 'Passed' : 'Not passed',
       CORRECT: `${correct} of ${scored.length}`, MINUTES: mins, COMPLETED: formDate(),
     });
@@ -495,7 +496,7 @@ function finish() {
           : `Your result couldn't be recorded: ${r.message}`;
     });
   }
-  $('#res-retry').onclick = () => { if (readyToRecord()) startScenario(s); else goHome(); };
+  $('#res-retry').onclick = () => startScenario(s);
   $('#res-home').onclick = goHome;
   $('#res-csv').onclick = () => downloadCsv(record);
   // Some hosts (e.g. sandboxed embeds) block file downloads; builds for them set this flag.
@@ -578,13 +579,20 @@ const reporter = new Reporter();
 const slugify = (s) => String(s || 'module').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'module';
 
 let resultsForm = null; // Microsoft Forms pre-filled link template from config.json
-const recording = () => reporter.enabled || !!resultsForm;
+let siteOffices = []; // office list from config.json
+/** A module can carry its own form link (handy for modules kept in SharePoint); otherwise the site's is used. */
+const formFor = (s) => (isFormTemplate(s?.resultsForm) ? s.resultsForm : resultsForm);
+const recording = (s) => reporter.enabled || !!formFor(s);
 
 /** Where results are recorded, the learner's name (unless signed in) and office are needed first. */
-function readyToRecord() {
-  if (!recording()) return true;
+function readyToRecord(s) {
+  if (previewReturn || !recording(s)) return true;
+  showRecordFields(Array.isArray(s?.offices) && s.offices.length ? s.offices : siteOffices);
   const need = !reporter.user && !ui.name.value.trim() ? ui.name : !$('#learner-office').value ? $('#learner-office') : null;
   if (!need) return true;
+  ui.loading.hidden = true;
+  ui.topbar.hidden = true;
+  ui.results.hidden = true;
   ui.home.hidden = false;
   toast(need === ui.name ? 'Enter your name so your result can be recorded.' : 'Choose your office so your result can be recorded.', 'bad', 4000);
   need.focus();
@@ -596,15 +604,10 @@ async function setUpRecording() {
   let config = {};
   try { config = await fetchJson('config.json'); } catch {}
   if (isFormTemplate(config.resultsForm)) resultsForm = config.resultsForm;
+  siteOffices = Array.isArray(config.offices) ? config.offices : [];
   await reporter.init();
   if (!recording()) return;
-  const offices = Array.isArray(config.offices) ? config.offices : [];
-  const sel = $('#learner-office');
-  sel.append(...offices.map((o) => new Option(o, o)));
-  if (!offices.length) sel.replaceWith(Object.assign(document.createElement('input'), { id: 'learner-office', type: 'text', placeholder: 'e.g. London' }));
-  try { const saved = localStorage.getItem('hqscale.office'); if (saved) $('#learner-office').value = saved; } catch {}
-  $('#learner-office').addEventListener('change', (e) => { try { localStorage.setItem('hqscale.office', e.target.value); } catch {} });
-  $('#record-fields').hidden = false;
+  showRecordFields(siteOffices);
   if (!reporter.enabled) $('.record-note').textContent = 'At the end you\'ll submit your name, office and score on a short form for your training record.';
   if (reporter.user) {
     $('#name-field').hidden = true;
@@ -615,6 +618,25 @@ async function setUpRecording() {
   } else {
     $('#name-hint').textContent = '(needed for your training record)';
   }
+}
+
+/** Shows the office field with these offices (a dropdown, or a text box when there's no list). */
+let shownOffices = null;
+function showRecordFields(offices) {
+  $('#record-fields').hidden = false;
+  if (!reporter.enabled && !reporter.user) $('#name-hint').textContent = '(needed for your training record)';
+  const key = JSON.stringify(offices);
+  if (key === shownOffices) return;
+  shownOffices = key;
+  let saved = $('#learner-office').value;
+  try { saved ||= localStorage.getItem('hqscale.office') || ''; } catch {}
+  const el = offices.length ? document.createElement('select') : Object.assign(document.createElement('input'), { type: 'text', placeholder: 'e.g. London' });
+  el.id = 'learner-office';
+  if (offices.length) el.append(new Option('Choose your office…', ''), ...offices.map((o) => new Option(o, o)));
+  el.value = saved;
+  if (el.value !== saved) el.value = '';
+  el.addEventListener('change', () => { try { localStorage.setItem('hqscale.office', el.value); } catch {} });
+  $('#learner-office').replaceWith(el);
 }
 
 // ---------------------------------------------------------------- modules from this computer
@@ -658,7 +680,6 @@ async function openLocalModule(fileList) {
   }
   const problems = validateScenario(m);
   if (problems.length) { toast(`This module has problems:\n• ${problems.join('\n• ')}`, 'bad', 9000); return; }
-  if (!readyToRecord()) return;
   await startScenario(m);
 }
 

@@ -392,3 +392,6 @@ body.room .modal { left: var(--front-left); right: auto; width: var(--front-widt
 
 /* run a module from files on this computer */
 .local-open { display: grid; gap: 6px; justify-items: start; margin-top: 16px; font-size: 13px; }
+
+.bld-more { margin: 4px 0 14px; font-size: 14px; }
+.bld-more summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
